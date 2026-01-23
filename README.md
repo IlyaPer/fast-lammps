@@ -11,5 +11,5 @@ python heating_aurum.py -k 2 -i 10000 -m 50 -l 250
 
 Great approximation:  
 ```
-python heating_aurum.py -k 4 -i 10000 -m 5 -l 1
+python heating_aurum.py -k 4 -i 10000 -m 1 -l 5
 ```
