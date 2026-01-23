@@ -112,9 +112,10 @@ def plot_layer_temperatures(atoms=cube):
 
 trajectory = []
 
+
 thermostat = mdmd.MultiGroupLangevinMD(cube,
-                                       groups = {'bottom': cube.get_tags()[MASKS_OF_LAYERS[0]],
-                                                 'rest': cube.get_tags()[~MASKS_OF_LAYERS[0]]},
+                                       groups = {'bottom': np.where(MASKS_OF_LAYERS[0])[0],
+                                                 'rest': np.where(~MASKS_OF_LAYERS[0])[0]},
                                        temps={'bottom': 300,
                                               'rest': 0},
                                        timestep=5 * units.fs,
@@ -131,7 +132,6 @@ thermostat.attach(
 today = date.today()
 curr_time = time.strftime("%H_%M")
 
-print("start")
 
 try:
     thermostat.run(iteration)
