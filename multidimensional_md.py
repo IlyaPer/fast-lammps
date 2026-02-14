@@ -121,7 +121,7 @@ class MultiGroupLangevinMD(MolecularDynamics):
 
         # 3. Full position update
         # r = r + dt * v
-        atoms.set_positions(atoms.get_positions() + self.dt * velocities)
+        atoms.set_positions(atoms.get_positions(wrap=True) + self.dt * velocities)
 
         # 4. Re-calculate forces at new positions
         forces = atoms.get_forces()
