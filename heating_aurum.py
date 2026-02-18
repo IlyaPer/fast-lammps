@@ -30,8 +30,9 @@ iteration = int(args.iteration)
 measure_frequency = int(args.measure_frequency)
 log_interval = int(args.log_interval)
 
-BASIC_NUMBER_CELLS = 5
+BASIC_NUMBER_CELLS = 8
 NUMBER_OF_CELLS = BASIC_NUMBER_CELLS // K # Scaling the size!!! Basic number of atoms is 16.
+from ase.visualize import view
 
 PBC = (True, True, False)
 
@@ -50,27 +51,13 @@ cube = au.repeat((NUMBER_OF_CELLS, NUMBER_OF_CELLS, NUMBER_OF_CELLS))
 
 cube.pbc = PBC
 
-# c = FixAtoms(indices=[atom.index for atom in atoms if atom.symbol == 'Cu'])
-# atoms.set_constraint(c)
-
-def check_forces(atoms):
-    forces = atoms.get_forces()
-    total_force = np.sum(forces, axis=0)
-    print(f"Суммарная сила: {total_force} eV/Å")
-    print(f"Максимальная сила: {np.max(np.linalg.norm(forces, axis=1))} eV/Å")
-    return total_force
-
-# Перед динамикой
-# c = FixAtoms(indices=[atom.index for atom in cube if atom.symbol == 'Au'])
-# cube.set_constraint(c)
 
 
 print(f"Для K={K} vs K=1:")
 print(f"Объём: {(A ** 3) * (NUMBER_OF_CELLS**3)} == {(4.08 ** 3)* (BASIC_NUMBER_CELLS**3)}")
 print(f"Масса: {len(cube) * ATOMIC_UNIT_MASS}  ==  {((BASIC_NUMBER_CELLS)**3)*4 * 196.196}")
-print(f"Количество атомов (должно отличаться): {len(cube)} != {((BASIC_NUMBER_CELLS)**3)*4}")
+print(f"Количество атомов (должно отличаться при k != 1): {len(cube)} != {((BASIC_NUMBER_CELLS)**3)*4}")
 
-write("init_cube.xyz", cube)
 
 
 cube.calc = (
@@ -79,9 +66,6 @@ cube.calc = (
 layer_thikness = A/2
 
 cube.set_masses(np.repeat([ATOMIC_UNIT_MASS], len(cube.get_masses()))) # Setting masses of the atoms
-
-# check_forces(cube)
-# exit(0)
 
 
 def create_masks(cube, n_layers, layer_thikness=layer_thikness): #CHECK INDEXING
@@ -97,12 +81,21 @@ def create_masks(cube, n_layers, layer_thikness=layer_thikness): #CHECK INDEXING
         MASKS_OF_LAYERS.append(mask)
         all_z[mask] = 1e+10
 
-        
     return MASKS_OF_LAYERS
 
 
 MASKS_OF_LAYERS = create_masks(cube, n_layers=n_layers, layer_thikness=layer_thikness)
 iteration_count = 0
+
+# combmask = MASKS_OF_LAYERS[0]
+# for mask in MASKS_OF_LAYERS[1:]:
+#     combmask |= mask
+
+# # for k, mask in enumerate(MASKS_OF_LAYERS):
+
+# write(f'init_cube_q.xyz', cube[combmask])
+
+# exit(0) 
 
 class LastlayerLeft(Exception):
 
@@ -119,6 +112,8 @@ class LayerTooHot(Exception):
         super().__init__(self.message)
 
 
+# cube.get_te
+
 def compute_temperatures(trajectory, cube, MASKS_OF_LAYERS, temperatures_by_layer):
     temps = []
     T_atom = np.zeros(len(cube))
@@ -128,8 +123,13 @@ def compute_temperatures(trajectory, cube, MASKS_OF_LAYERS, temperatures_by_laye
     velocities = cube.get_velocities()
     masses = cube.get_masses()
 
-    for _, mask in enumerate(MASKS_OF_LAYERS):
+    for mask in MASKS_OF_LAYERS:
         idxs = np.where(mask)[0]
+        # layer_temp = cube[idxs].get_temperature()
+        # temps.append(layer_temp)
+
+        # T_atom[mask] = layer_temp
+        # continue
 
         v_group = velocities[idxs]
         m_group = masses[idxs][:, None]
@@ -155,7 +155,7 @@ def compute_temperatures(trajectory, cube, MASKS_OF_LAYERS, temperatures_by_laye
 
         T_atom[mask] = layer_temp
 
-    temperatures_by_layer.append(np.array(temps))
+    temperatures_by_layer.append(temps)
 
     cube.set_array("Temperature", T_atom)
     trajectory.append(cube.copy())
@@ -173,16 +173,22 @@ trajectory = []
 temperatures_by_layer = []
 
 
-groups = {'bottom': np.where(MASKS_OF_LAYERS[0])[0]} 
-        #   'rest': np.where(~MASKS_OF_LAYERS[0])[0]}
+groups = {'bottom': np.where(MASKS_OF_LAYERS[0])[0]}
 temps = {'bottom': 300}
-        # 'rest': 0}
+
+thermostat = mdmd.MultiGroupLangevinMD(cube,
+                                           groups=groups,
+                                           temps=temps,
+                                           timestep=2 * units.fs,
+                                           friction=0.01 / units.fs)
+
+thermostat.run(200)
         
 while True:
     thermostat = mdmd.MultiGroupLangevinMD(cube,
                                            groups=groups,
                                            temps=temps,
-                                           timestep=5 * units.fs,
+                                           timestep=2 * units.fs,
                                            friction=0.01 / units.fs)
 
     thermostat.attach(MDLogger(thermostat, cube, f'logs/md_{K}.log', header=True, stress=False, peratom=True, mode="a"), interval=log_interval)
@@ -205,22 +211,13 @@ while True:
         cube.pbc = PBC
         n_layers = n_layers - 1
 
-        # print( len(np.where(MASKS_OF_LAYERS[0])[0]))
-        # print("=================^^=================")
-        # print(len(np.where(MASKS_OF_LAYERS[-1])[0]))
-        # print("=================!!=================")
+
         MASKS_OF_LAYERS = create_masks(cube, n_layers=n_layers)
         groups = {
             'bottom': np.where(MASKS_OF_LAYERS[0])[0],
             # 'rest': np.where(~MASKS_OF_LAYERS[0])[0]
         }
-        # print(len(np.where(MASKS_OF_LAYERS[0])[0]))
-        # # print(len(np.where(MASKS_OF_LAYERS[-1])[0]))
-        # print([len(np.where(k)[0]) for k in MASKS_OF_LAYERS])
-        # print("=================??=================")
-        temps = {'bottom': thermostat.all_group_temperatures()['bottom']}
-        # temps = {'bottom': thermostat.all_group_temperatures()['bottom'], 'rest': thermostat.all_group_temperatures()['rest']}
-        print("\033[93m" + ' Highest layer is too hot. Deleting.' + '\033[0m')
+        print("\033[93m" + ' Highest layer is too hot. Deleting on iteratrion: ' + str(iteration_count*measure_frequency) + '\033[0m')
         continue
     break
     
@@ -229,31 +226,37 @@ today = date.today()
 curr_time = time.strftime("%H_%M")
 write(f"records/cube_iteration_scale_{K}_{curr_time}_day_{today.day}_.extxyz", trajectory, format="extxyz")
 
+for i in temperatures_by_layer:
+    if len(i) < NUMBER_OF_CELLS*2:
+        for k in range(NUMBER_OF_CELLS*2 - len(i)):
+            i.append(0)
+
 matrix_temperatures_by_layer = np.array(temperatures_by_layer)
 tempetarures_with_measurment_val = {}
 
 for i, value in enumerate(temperatures_by_layer, 0):
     tempetarures_with_measurment_val[i*measure_frequency] = np.array(temperatures_by_layer[i])
-    print(i*measure_frequency)
 
 import pandas as pd
 
 tempetarures_with_measurment_val = pd.DataFrame(tempetarures_with_measurment_val).transpose()
-print(tempetarures_with_measurment_val)
 
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(5, 8))
 im = ax.imshow(tempetarures_with_measurment_val, cmap='bwr')
 
 fig.colorbar(im, ax=ax)
 
 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+# ax.yaxis.set_major_locator(MaxNLocator(integer=True))
 
 ax.set_title("Gradient of the heat spreading")
 ax.set_xlabel("Index of the layer")
 ax.set_ylabel("Iteration index")
+ax.set_yticks(range(len(tempetarures_with_measurment_val)))
+ax.set_yticklabels(tempetarures_with_measurment_val.index)
 ax.invert_yaxis()
 
+plt.tight_layout() 
 plt.savefig(f'records/temperature gradient_{K}_{curr_time}_day_{today.day}_.png')
 
 plt.show()
