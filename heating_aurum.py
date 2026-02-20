@@ -10,6 +10,7 @@ import argparse
 import multidimensional_md as mdmd
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
+from ase import Atoms
 
 parser = argparse.ArgumentParser(
                     prog='Heating_Aurum',
@@ -24,7 +25,37 @@ parser.add_argument('-d', '--delete_layer')
 
 args = parser.parse_args()
 
-K = int(args.scale)
+SCALE_FACTOR = int(args.scale)
+
+K=1
+
+def compute_approximation_atoms(K, atoms_to_approximate):
+    sigma_for_gold = 4.08 * (3.6/2.33)**(-1)
+    SIGMA= K * sigma_for_gold # Scaling for sigma
+
+    ATOMIC_UNIT_MASS = 196.196 * (K**3) # Scaling for masses
+    EPSILON=0.4 * (K**3) # Scaling for masses
+
+    A = SIGMA * (3.6/2.33)
+
+    positions_of_small_atoms = atoms_to_approximate.get_positions()[:,2].copy()
+
+    import ase.build
+
+    plane = ase.build.fcc111('Au', size=(int(NUMBER_OF_CELLS/K), int(NUMBER_OF_CELLS/K), 1), a=A)
+    plane.pbc = PBC
+
+    plane.set_masses(np.repeat([ATOMIC_UNIT_MASS], len(plane.get_masses())))
+
+
+    plane.calc = LennardJones(
+        sigma=SIGMA,
+        epsilon=EPSILON
+    )
+
+    return plane
+
+
 iteration = int(args.iteration)
 
 measure_frequency = int(args.measure_frequency)
@@ -42,16 +73,13 @@ SIGMA= K * sigma_for_gold # Scaling for sigma
 ATOMIC_UNIT_MASS = 196.196 * (K**3) # Scaling for masses
 EPSILON=0.4 * (K**3) # Scaling for masses
 n_layers = NUMBER_OF_CELLS*2
-THRESHOLD=250.
+THRESHOLD=15.
+
 
 A = SIGMA * (3.6/2.33)
 au = bulk("Au", "fcc", a=A, cubic=True)
-
 cube = au.repeat((NUMBER_OF_CELLS, NUMBER_OF_CELLS, NUMBER_OF_CELLS))
-
 cube.pbc = PBC
-
-
 
 print(f"Для K={K} vs K=1:")
 print(f"Объём: {(A ** 3) * (NUMBER_OF_CELLS**3)} == {(4.08 ** 3)* (BASIC_NUMBER_CELLS**3)}")
@@ -104,7 +132,7 @@ class LastlayerLeft(Exception):
         self.message = message
         super().__init__(self.message)
 
-class LayerTooHot(Exception):
+class CoarseGrane(Exception):
 
     def __init__(self, value, message="Value is too high"):
         self.value = value
@@ -114,14 +142,17 @@ class LayerTooHot(Exception):
 
 # cube.get_te
 
-def compute_temperatures(trajectory, cube, MASKS_OF_LAYERS, temperatures_by_layer):
+def compute_temperatures(trajectory, cube, MASKS_OF_LAYERS, temperatures_by_layer, already_grained):
     temps = []
     T_atom = np.zeros(len(cube))
+
+    graine_status = np.zeros(len(cube))
     global iteration_count
     iteration_count += 1
 
     velocities = cube.get_velocities()
     masses = cube.get_masses()
+
 
     for mask in MASKS_OF_LAYERS:
         idxs = np.where(mask)[0]
@@ -163,11 +194,32 @@ def compute_temperatures(trajectory, cube, MASKS_OF_LAYERS, temperatures_by_laye
     if len(MASKS_OF_LAYERS) == 1:
         raise LastlayerLeft(1)
     
-    
-    temp_highest_group = temps[-1]
+    indexes_of_higherst_k_layers = -K-already_grained-1
 
-    if temp_highest_group > THRESHOLD:
-        raise LayerTooHot(cube[~MASKS_OF_LAYERS[-1]].copy())
+    temp_highest_groups = temps[indexes_of_higherst_k_layers-1:-1-already_grained]
+    # print(temp_highest_groups," ||| ",  np.all(np.array(temp_highest_groups) > -1))
+
+    if np.all(np.array(temp_highest_groups) > THRESHOLD): #THRESHOLD
+        print("Graining...")
+        
+        combined_mask = MASKS_OF_LAYERS[0]
+        for i in range(1, len(MASKS_OF_LAYERS) + indexes_of_higherst_k_layers):
+            combined_mask |= MASKS_OF_LAYERS[i]
+
+        grained_atoms = compute_approximation_atoms(SCALE_FACTOR, cube[combined_mask])
+        graine_status[np.where(combined_mask)[0]] = 1 
+
+        cube = cube[~combined_mask].copy() # slice last K layers
+        cube = cube + grained_atoms
+
+        cube.calc = (
+            LennardJones(epsilon=EPSILON, sigma=SIGMA)
+        )
+        # print(cube)
+
+
+        # cube.set_array("Grained", graine_status)
+        raise CoarseGrane(cube.copy())
 
 trajectory = []
 temperatures_by_layer = []
@@ -176,13 +228,16 @@ temperatures_by_layer = []
 groups = {'bottom': np.where(MASKS_OF_LAYERS[0])[0]}
 temps = {'bottom': 300}
 
-thermostat = mdmd.MultiGroupLangevinMD(cube,
-                                           groups=groups,
-                                           temps=temps,
-                                           timestep=2 * units.fs,
-                                           friction=0.01 / units.fs)
+# thermostat = mdmd.MultiGroupLangevinMD(cube,
+#                                            groups=groups,
+#                                            temps=temps,
+#                                            timestep=2 * units.fs,
+#                                            friction=0.01 / units.fs)
 
-thermostat.run(200)
+# thermostat.run(200)
+
+# current_scale_factor = 1
+already_grained = 0 
         
 while True:
     thermostat = mdmd.MultiGroupLangevinMD(cube,
@@ -194,7 +249,7 @@ while True:
     thermostat.attach(MDLogger(thermostat, cube, f'logs/md_{K}.log', header=True, stress=False, peratom=True, mode="a"), interval=log_interval)
 
     thermostat.attach(
-        lambda: compute_temperatures(trajectory, cube, MASKS_OF_LAYERS, temperatures_by_layer),
+        lambda: compute_temperatures(trajectory, cube, MASKS_OF_LAYERS, temperatures_by_layer, already_grained),
         interval=measure_frequency,
     )
 
@@ -203,13 +258,14 @@ while True:
     except LastlayerLeft:
         print("\033[0;31m" + f'Last layer left. Break after: {iteration_count*measure_frequency}.' + '\033[0m')
         break
-    except LayerTooHot as e:
+    except CoarseGrane as e:
         cube = e.value
+        
+        cube.pbc = PBC
         cube.calc = (
             LennardJones(epsilon=EPSILON, sigma=SIGMA)
         )
-        cube.pbc = PBC
-        n_layers = n_layers - 1
+        # n_layers = n_layers - 1
 
 
         MASKS_OF_LAYERS = create_masks(cube, n_layers=n_layers)
@@ -217,7 +273,10 @@ while True:
             'bottom': np.where(MASKS_OF_LAYERS[0])[0],
             # 'rest': np.where(~MASKS_OF_LAYERS[0])[0]
         }
-        print("\033[93m" + ' Highest layer is too hot. Deleting on iteratrion: ' + str(iteration_count*measure_frequency) + '\033[0m')
+        already_grained += 1
+        if already_grained == n_layers:
+            break
+        print("\033[93m" + f' Highest {K} layers are hot enough. Changing up to k = {K} on interation: ' + str(iteration_count*measure_frequency) + f'. Already grained: {already_grained} layers.' + '\033[0m')
         continue
     break
     
