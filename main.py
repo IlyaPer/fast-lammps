@@ -3,6 +3,7 @@ import numpy as np
 import argparse
 import logging
 import src.atoms_extractor as ae
+from src.monitor import ResourceMonitor 
 
 parser = argparse.ArgumentParser(
     prog="Heating_Aurum",
@@ -46,6 +47,9 @@ def compute_params_CG(scale_factor):
 
 L = lammps()
 solver = ae.ExampleLayerExtractor()
+
+mon = ResourceMonitor()
+mon.start()
 
 SIGMA_CG, A_CG, EPSILON_CG, ATOMIC_UNIT_MASS_CG = compute_params_CG(SCALE_FACTOR)
 
@@ -111,14 +115,28 @@ while iter < iteration:
         L.command(f"group delete_group delete")
         L.command("reset_atoms id")
 
-        coordinates_of_region_string = " ".join(map(str, coordinates_of_region[i]))
+        coordinates_of_region_string = " ".join(map(str, coordinates_of_region))
         logging.warning(f"Coordinates fo: {coordinates_of_region_string}")
         L.command(f"lattice fcc {A_CG}")
         L.command(f"region temp block {coordinates_of_region_string} units box")
         L.command(f"create_atoms 2 region temp")
         L.command(f"region temp delete")
+
+        # delete extra atoms
+        coordinates_of_region[-2] = coordinates_of_region[-2] + 2
+        coordinates_of_region[-1] = coordinates_of_region[-2] + A_CG  
+
+        logging.info(f"New coords: {coordinates_of_region}")
+        coordinates_of_region_string = " ".join(map(str, coordinates_of_region))
+        L.command(f"region temp block {coordinates_of_region_string} units box")
+        L.command(f"group delete_group region temp")
+        L.command(f"delete_atoms group delete_group")
+        L.command(f"group delete_group delete")
+        L.command(f"region temp delete")
         L.command("reset_atoms id")
         break
+    mon.record()
 
     L.command("run 0")
     iter += measure_frequency
+mon.end()

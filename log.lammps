@@ -1,0 +1,863 @@
+LAMMPS (22 Jul 2025 - Update 3)
+units           metal
+atom_style      atomic
+atom_modify     map array #sort yes
+
+boundary 	    p p p
+
+lattice         fcc 4.08
+Lattice spacing in x,y,z = 4.08 4.08 4.08
+region          box block 0 10 0 10 0 10 units lattice
+create_box      2 box
+Created orthogonal box = (0 0 0) to (40.8 40.8 40.8)
+  1 by 1 by 1 MPI processor grid
+create_atoms    1 box
+Created 4000 atoms
+  using lattice units in orthogonal box = (0 0 0) to (40.8 40.8 40.8)
+  create_atoms CPU = 0.001 seconds
+
+pair_style      lj/cut 10.0
+# pair_coeff      1 1 1.0e-8 2.63
+pair_coeff      1 1 0.039 2.63 10.0
+pair_coeff      1 2 0.039 2.63 10.0
+pair_coeff      2 2 0.039 2.63 10.0
+
+region          bottom block 0 10 0 10 0 0.4 units lattice
+
+# Heater Layer (above fixed)
+group           heater region bottom
+200 atoms in group heater
+group		    box region box
+4000 atoms in group box
+group		    bulk subtract all heater
+3800 atoms in group bulk
+
+mass		    1 196.196
+mass            2 1
+# 4. Initial Velocities
+
+compute         ke_atom all ke/atom
+
+# Heat heater layer to 1000K
+#fix             1 bulk nve
+#fix             fix_heater heater nvt temp 300.0 300.0 0.1
+#fix             fix_heater heater npt temp 300.0 300.0 0.1 iso 0.0 0.0 1.0
+
+
+# fix 		temp all box/relax iso 0.0 vmax 0.001
+# unfix 		temp
+
+velocity        all create 40.0 12345
+minimize 	    1.0e-4 1.0e-6 100 1000
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Neighbor list info ...
+  update: every = 1 steps, delay = 0 steps, check = yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 7 7 7
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair lj/cut, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 7.84 | 7.84 | 7.84 Mbytes
+   Step          Temp          E_pair         E_mol          TotEng         Press     
+         0   40            -1316.0573      0             -1295.3809     -2940.7841    
+         1   40            -1316.0573      0             -1295.3809     -2940.7841    
+Loop time of 0.0327601 on 1 procs for 1 steps with 4000 atoms
+
+95.4% CPU use with 1 MPI tasks x no OpenMP threads
+
+Minimization stats:
+  Stopping criterion = energy tolerance
+  Energy initial, next-to-last, final = 
+     -1316.05732697277  -1316.05732697277  -1316.05732697277
+  Force two-norm initial, final = 1.7306477e-13 1.7365555e-13
+  Force max component initial, final = 3.4445747e-15 3.6255721e-15
+  Final line search alpha, max atom move = 1 3.6255721e-15
+  Iterations, force evaluations = 1 2
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0.031944   | 0.031944   | 0.031944   |   0.0 | 97.51
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0.0001455  | 0.0001455  | 0.0001455  |   0.0 |  0.44
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 0.0006706  |            |       |  2.05
+
+Nlocal:           4000 ave        4000 max        4000 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:          10895 ave       10895 max       10895 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         856000 ave      856000 max      856000 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 856000
+Ave neighs/atom = 214
+Neighbor list builds = 0
+Dangerous builds = 0
+
+#fix 		relaxation all box/relax iso 0.0 vmax 0.001
+fix             1 all nve
+# change_box      all z final 0 80
+# fix             1 all nph iso 0.0 0.0 1000.0
+# fix            fix_heater heater nvt temp 300.0 300.0 0.1     # !!!!!!! HERE IS THE KEY
+
+
+
+thermo          500
+thermo_style    custom step temp ke pe
+thermo_modify   lost ignore flush yes
+timestep        0.001
+
+dump 1 all custom 500 records/trajectory_dcg.lammpstrj id type x y z c_ke_atom mass
+dump_modify 1 append yes
+#lattice         fcc {A_CG}
+
+pair_coeff      1 2 0.4 2.6406666666666667
+pair_coeff      2 2 0.4 2.6406666666666667
+mass            2 588.588
+lattice         fcc 16.32
+Lattice spacing in x,y,z = 16.32 16.32 16.32
+
+reset_atoms id sort yes
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 500
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 6.715 | 6.715 | 6.715 Mbytes
+   Step          Temp          KinEng         PotEng    
+         1   40             20.676453     -1316.0573    
+       500   22.530615      11.64633      -1305.9034    
+       501   22.477256      11.618748     -1305.8757    
+Loop time of 3.94215 on 1 procs for 500 steps with 4000 atoms
+
+Performance: 10.958 ns/day, 2.190 hours/ns, 126.834 timesteps/s, 507.338 katom-step/s
+98.7% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 3.8778     | 3.8778     | 3.8778     |   0.0 | 98.37
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0.025561   | 0.025561   | 0.025561   |   0.0 |  0.65
+Output  | 0.0089365  | 0.0089365  | 0.0089365  |   0.0 |  0.23
+Modify  | 0.017375   | 0.017375   | 0.017375   |   0.0 |  0.44
+Other   |            | 0.01245    |            |       |  0.32
+
+Nlocal:           4000 ave        4000 max        4000 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:          10895 ave       10895 max       10895 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         856000 ave      856000 max      856000 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 856000
+Ave neighs/atom = 214
+Neighbor list builds = 0
+Dangerous builds = 0
+group delete_group id 3401 3402 3403 3405 3406 3408 3409 3411 3412 3414 3415 3417 3418 3420 3421 3423 3424 3426 3427 3429 3430 3432 3433 3435 3436 3438 3439 3440 3442 3444 3445 3447 3448 3449 3451 3453 3454 3456 3457 3459 3460 3462 3463 3465 3466 3468 3469 3471 3472 3474 3475 3477 3478 3480 3481 3483 3484 3485 3487 3489 3491 3492 3493 3495 3497 3498 3499 3501 3503 3504 3505 3507 3509 3510 3511 3513 3515 3516 3517 3519 3521 3522 3523 3525 3527 3528 3529 3531 3533 3534 3535 3537 3539 3540 3541 3543 3545 3546 3547 3549 3550 3552 3554 3555 3557 3558 3560 3561 3563 3564 3566 3567 3569 3570 3572 3573 3575 3576 3578 3579 3581 3582 3584 3585 3587 3588 3590 3591 3593 3594 3596 3597 3599 3600 3602 3603 3605 3606 3608 3609 3611 3612 3614 3615 3617 3618 3620 3621 3623 3624 3626 3627 3629 3630 3632 3633 3635 3636 3638 3639 3641 3642 3644 3645 3646 3648 3650 3651 3652 3654 3656 3657 3658 3660 3662 3663 3664 3666 3668 3669 3670 3672 3674 3675 3676 3678 3680 3681 3682 3684 3686 3687 3688 3690 3692 3693 3694 3696 3698 3699 3701 3702 3704 3705 3706 3708 3710 3711 3712 3714 3716 3717 3718 3720 3722 3723 3724 3726 3728 3729 3730 3732 3734 3735 3736 3738 3740 3741 3742 3744 3746 3747 3748 3750 3752 3753 3754 3756 3758 3759 3761 3762 3763 3765 3766 3768 3769 3771 3772 3774 3775 3777 3778 3780 3781 3783 3784 3786 3787 3789 3790 3792 3793 3795 3796 3798 3799 3801 3802 3804 3805 3807 3808 3810 3811 3813 3814 3816 3817 3819 3820 3822 3823 3825 3826 3828 3829 3831 3832 3834 3835 3837 3838 3841 3843 3844 3846 3847 3849 3851 3852 3853 3855 3857 3858 3859 3861 3863 3864 3865 3867 3869 3870 3871 3873 3875 3876 3877 3879 3881 3882 3883 3885 3887 3888 3889 3891 3893 3894 3895 3897 3899 3900 3901 3903 3905 3906 3907 3909 3912 3913 3914 3915 3917 3918 3920 3921 3923 3924 3926 3927 3929 3930 3932 3933 3935 3936 3938 3939 3941 3942 3944 3945 3947 3948 3950 3951 3953 3954 3956 3957 3959 3960 3962 3963 3965 3966 3968 3969 3971 3972 3974 3975 3977 3978 3980 3981 3983 3984 3986 3987 3989 3990 3992 3993 3995 3996 3998 3999
+399 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 399 atoms, new total = 3601
+group delete_group delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+lattice fcc 16.32
+Lattice spacing in x,y,z = 16.32 16.32 16.32
+region temp block -0.07214964270953127 38.797565668661335 -0.06580365922692981 38.78574968362831 36.59963247276082 52.91963247276082 units box
+create_atoms 2 region temp
+Created 0 atoms
+  using lattice units in orthogonal box = (0 0 0) to (40.8 40.8 40.8)
+  create_atoms CPU = 0.001 seconds
+region temp delete
+region temp block -0.07214964270953127 38.797565668661335 -0.06580365922692981 38.78574968362831 38.59963247276082 54.91963247276082 units box
+group delete_group region temp
+134 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 134 atoms, new total = 3467
+group delete_group delete
+region temp delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 0
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.303 | 8.303 | 8.303 Mbytes
+   Step          Temp          KinEng         PotEng    
+       501   22.440807      10.053833     -1045.225     
+Loop time of 2.5e-06 on 1 procs for 0 steps with 3467 atoms
+
+0.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 2.5e-06    |            |       |100.00
+
+Nlocal:           3467 ave        3467 max        3467 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           8888 ave        8888 max        8888 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         661570 ave      661570 max      661570 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 661570
+Ave neighs/atom = 190.81915
+Neighbor list builds = 0
+Dangerous builds = 0
+reset_atoms id sort yes
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 500
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.303 | 8.303 | 8.303 Mbytes
+   Step          Temp          KinEng         PotEng    
+       501   22.440807      10.053833     -1045.225     
+      1000   24.080287      10.788346     -1045.9113    
+      1001   24.060857      10.779641     -1045.9034    
+Loop time of 3.12108 on 1 procs for 500 steps with 3467 atoms
+
+Performance: 13.841 ns/day, 1.734 hours/ns, 160.201 timesteps/s, 555.418 katom-step/s
+97.6% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 3.0673     | 3.0673     | 3.0673     |   0.0 | 98.28
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0.020611   | 0.020611   | 0.020611   |   0.0 |  0.66
+Output  | 0.0068442  | 0.0068442  | 0.0068442  |   0.0 |  0.22
+Modify  | 0.015274   | 0.015274   | 0.015274   |   0.0 |  0.49
+Other   |            | 0.01109    |            |       |  0.36
+
+Nlocal:           3467 ave        3467 max        3467 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           8888 ave        8888 max        8888 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         661570 ave      661570 max      661570 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 661570
+Ave neighs/atom = 190.81915
+Neighbor list builds = 0
+Dangerous builds = 0
+group delete_group id 3307 3308 3309 3311 3319 3321 3326 3328 3332 3333 3337 3344 3350 3353 3355 3365 3367 3369 3389 3391 3394 3395 3396 3397 3399 3401 3407 3410 3412 3413 3416 3417 3418 3419 3420 3422 3424 3425 3427 3428 3430 3431 3432 3436 3437 3438 3440 3441 3442 3443 3447 3453 3455 3458 3461 3465 3466
+57 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 57 atoms, new total = 3410
+group delete_group delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+lattice fcc 16.32
+Lattice spacing in x,y,z = 16.32 16.32 16.32
+region temp block 1.9833229487675494 40.857309267720254 -0.0313798700814427 40.96120714765288 36.71637202886505 53.03637202886505 units box
+create_atoms 2 region temp
+Created 0 atoms
+  using lattice units in orthogonal box = (0 0 0) to (40.8 40.8 40.8)
+  create_atoms CPU = 0.001 seconds
+region temp delete
+region temp block 1.9833229487675494 40.857309267720254 -0.0313798700814427 40.96120714765288 38.71637202886505 55.03637202886505 units box
+group delete_group region temp
+101 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 101 atoms, new total = 3309
+group delete_group delete
+region temp delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 0
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.303 | 8.303 | 8.303 Mbytes
+   Step          Temp          KinEng         PotEng    
+      1001   23.584925      10.084738     -1002.2227    
+Loop time of 2.7e-06 on 1 procs for 0 steps with 3309 atoms
+
+0.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 2.7e-06    |            |       |100.00
+
+Nlocal:           3309 ave        3309 max        3309 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           8266 ave        8266 max        8266 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         615284 ave      615284 max      615284 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 615284
+Ave neighs/atom = 185.94258
+Neighbor list builds = 0
+Dangerous builds = 0
+reset_atoms id sort yes
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 500
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.303 | 8.303 | 8.303 Mbytes
+   Step          Temp          KinEng         PotEng    
+      1001   23.584925      10.084738     -1002.2227    
+      1500   29.750453      12.721072     -1004.771     
+      1501   29.730017      12.712334     -1004.7619    
+Loop time of 2.88267 on 1 procs for 500 steps with 3309 atoms
+
+Performance: 14.986 ns/day, 1.601 hours/ns, 173.450 timesteps/s, 573.947 katom-step/s
+99.7% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 2.8223     | 2.8223     | 2.8223     |   0.0 | 97.90
+Neigh   | 0.011185   | 0.011185   | 0.011185   |   0.0 |  0.39
+Comm    | 0.018259   | 0.018259   | 0.018259   |   0.0 |  0.63
+Output  | 0.0070123  | 0.0070123  | 0.0070123  |   0.0 |  0.24
+Modify  | 0.013816   | 0.013816   | 0.013816   |   0.0 |  0.48
+Other   |            | 0.01012    |            |       |  0.35
+
+Nlocal:           3309 ave        3309 max        3309 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           8284 ave        8284 max        8284 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         612035 ave      612035 max      612035 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 612035
+Ave neighs/atom = 184.96071
+Neighbor list builds = 1
+Dangerous builds = 0
+group delete_group id 49 3215 3254 3263 3274 3276 3279 3280 3281 3284 3285 3289 3290 3297 3300 3301
+16 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 16 atoms, new total = 3293
+group delete_group delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+lattice fcc 16.32
+Lattice spacing in x,y,z = 16.32 16.32 16.32
+region temp block 0.041569985256622345 40.69534871292477 0.08547639739390235 40.65722286843837 36.782068521478 53.102068521478 units box
+create_atoms 2 region temp
+Created 0 atoms
+  using lattice units in orthogonal box = (0 0 0) to (40.8 40.8 40.8)
+  create_atoms CPU = 0.001 seconds
+region temp delete
+region temp block 0.041569985256622345 40.69534871292477 0.08547639739390235 40.65722286843837 38.782068521478 55.102068521478 units box
+group delete_group region temp
+3 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 3 atoms, new total = 3290
+group delete_group delete
+region temp delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 0
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.303 | 8.303 | 8.303 Mbytes
+   Step          Temp          KinEng         PotEng    
+      1501   29.051216      12.350736     -1000.6129    
+Loop time of 3.7e-06 on 1 procs for 0 steps with 3290 atoms
+
+0.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 3.7e-06    |            |       |100.00
+
+Nlocal:           3290 ave        3290 max        3290 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           8191 ave        8191 max        8191 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         607096 ave      607096 max      607096 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 607096
+Ave neighs/atom = 184.52766
+Neighbor list builds = 0
+Dangerous builds = 0
+reset_atoms id sort yes
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 500
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.303 | 8.303 | 8.303 Mbytes
+   Step          Temp          KinEng         PotEng    
+      1501   29.051216      12.350736     -1000.6129    
+      2000   33.806813      14.372514     -1002.6449    
+      2001   33.808729      14.373329     -1002.6458    
+Loop time of 2.79035 on 1 procs for 500 steps with 3290 atoms
+
+Performance: 15.482 ns/day, 1.550 hours/ns, 179.189 timesteps/s, 589.533 katom-step/s
+98.6% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 2.7335     | 2.7335     | 2.7335     |   0.0 | 97.96
+Neigh   | 0.011012   | 0.011012   | 0.011012   |   0.0 |  0.39
+Comm    | 0.016791   | 0.016791   | 0.016791   |   0.0 |  0.60
+Output  | 0.0064162  | 0.0064162  | 0.0064162  |   0.0 |  0.23
+Modify  | 0.012998   | 0.012998   | 0.012998   |   0.0 |  0.47
+Other   |            | 0.00967    |            |       |  0.35
+
+Nlocal:           3290 ave        3290 max        3290 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           8221 ave        8221 max        8221 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         608231 ave      608231 max      608231 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 608231
+Ave neighs/atom = 184.87264
+Neighbor list builds = 1
+Dangerous builds = 0
+group delete_group id 3199 3200 3201 3202 3203 3204 3205 3206 3207 3208 3209 3210 3211 3212 3213 3214 3215 3216 3217 3218 3219 3220 3221 3222 3223 3224 3225 3226 3227 3228 3229 3230 3231 3232 3233 3234 3235 3236 3237 3238 3239 3241 3242 3243 3244 3245 3246 3247 3248 3249 3250 3251 3252 3253 3254 3256 3257 3258 3259 3260 3261 3262 3263 3264 3265 3266 3267 3268 3270 3271 3272 3273 3274 3275 3276 3277 3278 3279 3280 3281 3282 3283 3284 3285 3286 3287 3288 3289
+88 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 88 atoms, new total = 3202
+group delete_group delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+lattice fcc 16.32
+Lattice spacing in x,y,z = 16.32 16.32 16.32
+region temp block 0.27779651725588617 40.77177010598776 0.10869230161682895 40.67710970263156 34.91275233677634 51.23275233677634 units box
+create_atoms 2 region temp
+Created 0 atoms
+  using lattice units in orthogonal box = (0 0 0) to (40.8 40.8 40.8)
+  create_atoms CPU = 0.001 seconds
+region temp delete
+region temp block 0.27779651725588617 40.77177010598776 0.10869230161682895 40.67710970263156 36.91275233677634 53.23275233677634 units box
+group delete_group region temp
+0 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 0 atoms, new total = 3202
+group delete_group delete
+region temp delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 0
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.303 | 8.303 | 8.303 Mbytes
+   Step          Temp          KinEng         PotEng    
+      2001   27.389641      11.332785     -984.88127    
+Loop time of 2e-06 on 1 procs for 0 steps with 3202 atoms
+
+0.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 2e-06      |            |       |100.00
+
+Nlocal:           3202 ave        3202 max        3202 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           7871 ave        7871 max        7871 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         586596 ave      586596 max      586596 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 586596
+Ave neighs/atom = 183.19675
+Neighbor list builds = 0
+Dangerous builds = 0
+reset_atoms id sort yes
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 500
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.303 | 8.303 | 8.303 Mbytes
+   Step          Temp          KinEng         PotEng    
+      2001   27.389641      11.332785     -984.88127    
+      2500   28.853081      11.9383       -985.55599    
+      2501   28.851515      11.937653     -985.55519    
+Loop time of 2.75695 on 1 procs for 500 steps with 3202 atoms
+
+Performance: 15.670 ns/day, 1.532 hours/ns, 181.360 timesteps/s, 580.715 katom-step/s
+98.6% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 2.6969     | 2.6969     | 2.6969     |   0.0 | 97.82
+Neigh   | 0.013306   | 0.013306   | 0.013306   |   0.0 |  0.48
+Comm    | 0.017412   | 0.017412   | 0.017412   |   0.0 |  0.63
+Output  | 0.0066277  | 0.0066277  | 0.0066277  |   0.0 |  0.24
+Modify  | 0.013089   | 0.013089   | 0.013089   |   0.0 |  0.47
+Other   |            | 0.009623   |            |       |  0.35
+
+Nlocal:           3202 ave        3202 max        3202 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           7855 ave        7855 max        7855 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         586193 ave      586193 max      586193 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 586193
+Ave neighs/atom = 183.07089
+Neighbor list builds = 1
+Dangerous builds = 0
+group delete_group id 2998 2999 3000 3001 3002 3003 3004 3005 3006 3007 3008 3009 3010 3011 3012 3013 3014 3015 3016 3017 3018 3019 3020 3021 3022 3023 3024 3025 3026 3027 3028 3029 3030 3031 3032 3033 3034 3035 3036 3037 3038 3039 3040 3041 3042 3043 3044 3045 3046 3047 3048 3049 3050 3051 3052 3053 3054 3055 3056 3057 3058 3059 3060 3061 3062 3063 3064 3065 3066 3067 3068 3069 3070 3071 3072 3073 3074 3075 3076 3077 3078 3079 3080 3081 3082 3083 3084 3085 3086 3087 3088 3089 3090 3091 3092 3093 3094 3095 3096 3097 3098 3099 3100 3101 3102 3103 3104 3105 3106 3107 3108 3109 3110 3111 3112 3113 3114 3115 3116 3117 3118 3119 3120 3121 3122 3123 3124 3125 3126 3127 3128 3129 3130 3131 3132 3133 3134 3135 3136 3137 3138 3139 3140 3141 3142 3143 3144 3146 3147 3148 3149 3150 3151 3152 3153 3154 3155 3156 3157 3158 3159 3160 3161 3162 3163 3164 3165 3166 3167 3168 3169 3170 3171 3172 3173 3174 3175 3176 3177 3178 3179 3180 3181 3182 3183 3184 3185 3186 3187 3188 3189 3190 3191 3192 3193 3194 3195 3196 3197 3198 3199 3200 3201
+203 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 203 atoms, new total = 2999
+group delete_group delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+lattice fcc 16.32
+Lattice spacing in x,y,z = 16.32 16.32 16.32
+region temp block -0.05275889220594302 40.81379347687206 -0.04467370002609274 40.828961038795704 32.38423434095694 48.70423434095694 units box
+create_atoms 2 region temp
+Created 13 atoms
+  using lattice units in orthogonal box = (0 0 0) to (40.8 40.8 40.8)
+  create_atoms CPU = 0.001 seconds
+region temp delete
+region temp block -0.05275889220594302 40.81379347687206 -0.04467370002609274 40.828961038795704 34.38423434095694 50.70423434095694 units box
+group delete_group region temp
+0 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 0 atoms, new total = 3012
+group delete_group delete
+region temp delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 0
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.303 | 8.303 | 8.303 Mbytes
+   Step          Temp          KinEng         PotEng    
+      2501   26.157882      10.180708     -949.40599    
+Loop time of 1.8e-06 on 1 procs for 0 steps with 3012 atoms
+
+0.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 1.8e-06    |            |       |100.00
+
+Nlocal:           3012 ave        3012 max        3012 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           7144 ave        7144 max        7144 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         544831 ave      544831 max      544831 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 544831
+Ave neighs/atom = 180.88679
+Neighbor list builds = 0
+Dangerous builds = 0
+reset_atoms id sort yes
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 500
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.303 | 8.303 | 8.303 Mbytes
+   Step          Temp          KinEng         PotEng    
+      2501   26.157882      10.180708     -949.40599    
+      3000   28.380645      11.045812     -950.34263    
+      3001   28.405303      11.055409     -950.35248    
+Loop time of 2.63928 on 1 procs for 500 steps with 3012 atoms
+
+Performance: 16.368 ns/day, 1.466 hours/ns, 189.446 timesteps/s, 570.611 katom-step/s
+97.7% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 2.5913     | 2.5913     | 2.5913     |   0.0 | 98.18
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0.017856   | 0.017856   | 0.017856   |   0.0 |  0.68
+Output  | 0.0064885  | 0.0064885  | 0.0064885  |   0.0 |  0.25
+Modify  | 0.013781   | 0.013781   | 0.013781   |   0.0 |  0.52
+Other   |            | 0.009893   |            |       |  0.37
+
+Nlocal:           3012 ave        3012 max        3012 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           7144 ave        7144 max        7144 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         544831 ave      544831 max      544831 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 544831
+Ave neighs/atom = 180.88679
+Neighbor list builds = 0
+Dangerous builds = 0
+group delete_group id 2599 2601 2602 2603 2605 2607 2609 2611 2613 2615 2616 2618 2619 2620 2621 2622 2624 2625 2629 2630 2631 2632 2633 2636 2638 2641 2642 2643 2644 2646 2647 2649 2652 2653 2656 2658 2661 2662 2664 2665 2666 2669 2671 2672 2674 2676 2679 2680 2681 2684 2686 2687 2688 2689 2692 2694 2695 2697 2699 2703 2704 2705 2709 2710 2714 2716 2717 2718 2719 2720 2722 2725 2726 2730 2732 2733 2735 2737 2740 2741 2744 2745 2746 2748 2751 2752 2754 2755 2756 2758 2760 2762 2763 2766 2768 2769 2770 2773 2775 2776 2777 2778 2780 2781 2784 2785 2787 2790 2791 2793 2794 2795 2796 2797 2799 2802 2803 2804 2806 2808 2811 2812 2813 2814 2816 2817 2819 2820 2824 2825 2828 2830 2832 2833 2834 2835 2837 2839 2841 2844 2846 2848 2849 2851 2853 2854 2855 2857 2860 2862 2863 2866 2867 2868 2871 2873 2874 2875 2877 2879 2880 2881 2882 2886 2888 2890 2891 2894 2896 2897 2899 2901 2902 2904 2907 2909 2911 2913 2916 2918 2921 2923 2924 2927 2928 2929 2930 2931 2932 2933 2934 2936 2937 2939 2940 2943 2944 2946 2947 2950 2951 2952 2953 2954 2957 2958 2960 2961 2962 2963 2965 2968 2971 2972 2974 2977 2978 2979 2981 2982 2984 2987 2989 2991 2994 2995 2997 2999 3000 3002 3003 3005 3009 3010
+234 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 234 atoms, new total = 2778
+group delete_group delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+lattice fcc 16.32
+Lattice spacing in x,y,z = 16.32 16.32 16.32
+region temp block -0.06510500347047599 40.91304820052907 -0.5481653143881215 40.832788666873235 28.765557101445513 45.08555710144552 units box
+create_atoms 2 region temp
+Created 13 atoms
+  using lattice units in orthogonal box = (0 0 0) to (40.8 40.8 40.8)
+  create_atoms CPU = 0.003 seconds
+region temp delete
+region temp block -0.06510500347047599 40.91304820052907 -0.5481653143881215 40.832788666873235 30.765557101445513 47.08555710144552 units box
+group delete_group region temp
+86 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 86 atoms, new total = 2705
+group delete_group delete
+region temp delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 0
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.303 | 8.303 | 8.303 Mbytes
+   Step          Temp          KinEng         PotEng    
+      3001   24.966059      8.7261229     -810.44467    
+Loop time of 2.1e-06 on 1 procs for 0 steps with 2705 atoms
+
+0.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 2.1e-06    |            |       |100.00
+
+Nlocal:           2705 ave        2705 max        2705 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           6322 ave        6322 max        6322 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         476303 ave      476303 max      476303 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 476303
+Ave neighs/atom = 176.08244
+Neighbor list builds = 0
+Dangerous builds = 0
+reset_atoms id sort yes
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 500
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.303 | 8.303 | 8.303 Mbytes
+   Step          Temp          KinEng         PotEng    
+      3001   24.966059      8.7261229     -810.44467    
+      3500   28.175434      9.8478616     -811.74384    
+      3501   28.182505      9.8503333     -811.7459     
+Loop time of 2.32138 on 1 procs for 500 steps with 2705 atoms
+
+Performance: 18.610 ns/day, 1.290 hours/ns, 215.389 timesteps/s, 582.627 katom-step/s
+98.9% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 2.2786     | 2.2786     | 2.2786     |   0.0 | 98.16
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0.015835   | 0.015835   | 0.015835   |   0.0 |  0.68
+Output  | 0.0056823  | 0.0056823  | 0.0056823  |   0.0 |  0.24
+Modify  | 0.012337   | 0.012337   | 0.012337   |   0.0 |  0.53
+Other   |            | 0.008971   |            |       |  0.39
+
+Nlocal:           2705 ave        2705 max        2705 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           6322 ave        6322 max        6322 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         476303 ave      476303 max      476303 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 476303
+Ave neighs/atom = 176.08244
+Neighbor list builds = 0
+Dangerous builds = 0
+group delete_group id 2402 2406 2409 2411 2415 2418 2422 2424 2427 2431 2435 2437 2439 2441 2442 2444 2447 2449 2455 2456 2459 2463 2465 2470 2473 2474 2478 2479 2482 2483 2485 2492 2493 2496 2497 2499 2501 2505 2506 2508 2511 2513 2514 2515 2519 2521 2525 2526 2529 2530 2533 2535 2536 2540 2542 2543 2547 2548 2550 2551 2557 2558 2562 2563 2566 2567 2570 2575 2576 2577 2581 2584 2591 2603 2605 2606 2610 2613 2618 2619 2621 2624 2626 2629 2633 2635 2639 2641 2642 2644 2647 2649 2662 2666 2667 2670 2673 2675 2677 2679 2682 2683 2689 2691 2692 2697 2702
+107 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 107 atoms, new total = 2598
+group delete_group delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+lattice fcc 16.32
+Lattice spacing in x,y,z = 16.32 16.32 16.32
+region temp block 0.029071738481845518 40.91126725729631 -0.03495698669366912 41.11206097074292 26.846689641223325 43.16668964122333 units box
+create_atoms 2 region temp
+Created 10 atoms
+  using lattice units in orthogonal box = (0 0 0) to (40.8 40.8 40.8)
+  create_atoms CPU = 0.001 seconds
+region temp delete
+region temp block 0.029071738481845518 40.91126725729631 -0.03495698669366912 41.11206097074292 28.846689641223325 45.16668964122333 units box
+group delete_group region temp
+51 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 51 atoms, new total = 2557
+group delete_group delete
+region temp delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 0
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.303 | 8.303 | 8.303 Mbytes
+   Step          Temp          KinEng         PotEng    
+      3501   26.460548      8.742272      -766.23131    
+Loop time of 2.1e-06 on 1 procs for 0 steps with 2557 atoms
+
+0.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 2.1e-06    |            |       |100.00
+
+Nlocal:           2557 ave        2557 max        2557 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           5977 ave        5977 max        5977 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         448715 ave      448715 max      448715 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 448715
+Ave neighs/atom = 175.48494
+Neighbor list builds = 0
+Dangerous builds = 0
+reset_atoms id sort yes
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 500
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.303 | 8.303 | 8.303 Mbytes
+   Step          Temp          KinEng         PotEng    
+      3501   26.460548      8.742272      -766.23131    
+      4000   25.799723      8.5239428     -766.02899    
+      4001   25.808425      8.5268181     -766.03197    
+Loop time of 2.17433 on 1 procs for 500 steps with 2557 atoms
+
+Performance: 19.868 ns/day, 1.208 hours/ns, 229.956 timesteps/s, 587.997 katom-step/s
+98.4% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 2.1343     | 2.1343     | 2.1343     |   0.0 | 98.16
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0.014391   | 0.014391   | 0.014391   |   0.0 |  0.66
+Output  | 0.005474   | 0.005474   | 0.005474   |   0.0 |  0.25
+Modify  | 0.01171    | 0.01171    | 0.01171    |   0.0 |  0.54
+Other   |            | 0.008455   |            |       |  0.39
+
+Nlocal:           2557 ave        2557 max        2557 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           5977 ave        5977 max        5977 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         448715 ave      448715 max      448715 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 448715
+Ave neighs/atom = 175.48494
+Neighbor list builds = 0
+Dangerous builds = 0
+group delete_group id 2201 2203 2206 2207 2210 2213 2214 2216 2219 2220 2222 2223 2226 2228 2229 2232 2234 2238 2239 2241 2242 2244 2247 2248 2249 2251 2255 2256 2259 2261 2264 2266 2268 2269 2271 2275 2277 2278 2279 2283 2284 2285 2288 2292 2293 2297 2299 2301 2303 2307 2309 2312 2313 2314 2316 2318 2323 2327 2331 2333 2335 2338 2342 2344 2345 2350 2352 2354 2360 2361 2364 2365 2367 2370 2372 2373 2375 2380 2381 2383 2385 2387 2390 2391 2392 2394 2395 2399 2401 2403 2405 2406 2408 2411 2412 2415 2417 2420 2422 2423 2424 2426 2428 2431 2433 2434 2436 2437 2438 2440 2443 2447 2449 2450 2453 2456 2458 2462 2463 2468 2470 2473 2476 2479 2481 2483 2485 2487 2488 2490 2493 2494 2497 2498 2500 2503 2505 2508 2509 2510 2512 2515 2518 2519 2521 2524 2526 2529 2530 2533 2535 2539 2540 2542 2545 2546 2549 2552 2553 2555
+160 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 160 atoms, new total = 2397
+group delete_group delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+lattice fcc 16.32
+Lattice spacing in x,y,z = 16.32 16.32 16.32
+region temp block -0.21622872928872686 40.825795958208865 -0.03571778107668889 40.974819827028305 24.820020860553225 41.14002086055322 units box
+create_atoms 2 region temp
+Created 13 atoms
+  using lattice units in orthogonal box = (0 0 0) to (40.8 40.8 40.8)
+  create_atoms CPU = 0.001 seconds
+region temp delete
+region temp block -0.21622872928872686 40.825795958208865 -0.03571778107668889 40.974819827028305 26.820020860553225 43.14002086055322 units box
+group delete_group region temp
+46 atoms in group delete_group
+delete_atoms group delete_group
+Deleted 46 atoms, new total = 2364
+group delete_group delete
+region temp delete
+reset_atoms id
+Resetting atom IDs ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+run 0
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.303 | 8.303 | 8.303 Mbytes
+   Step          Temp          KinEng         PotEng    
+      4001   25.384191      7.7533911     -695.34277    
+Loop time of 2.2e-06 on 1 procs for 0 steps with 2364 atoms
+
+0.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 2.2e-06    |            |       |100.00
+
+Nlocal:           2364 ave        2364 max        2364 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           5712 ave        5712 max        5712 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         405800 ave      405800 max      405800 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 405800
+Ave neighs/atom = 171.65821
+Neighbor list builds = 0
+Dangerous builds = 0
+Total wall time: 0:00:23

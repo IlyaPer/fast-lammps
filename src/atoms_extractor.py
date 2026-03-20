@@ -71,7 +71,7 @@ class ExampleLayerExtractor(Extractor):
 
         z = coordinates[:, 2]
         logging.info(f"Positions: from {z.min()} to {z.max()}")
-        step = lattice_constant / 2
+        step = lattice_constant
         logging.info(f"Using FCC layer spacing: step = {step}")
 
         zmax = z.max()
@@ -89,33 +89,38 @@ class ExampleLayerExtractor(Extractor):
             logging.info(f"LAYER {i}, Collecting atoms from: {lower} to {upper}")
 
             mask = (z >= lower) & (z < upper)
+            actual_atoms = coordinates[mask]
+            
+            if np.any(masses > 200):
+                logging.info(f"SKIPPED ALREADY GRAINED ATOMS")
+                continue
             # mask = z[mask_local]
 
-            if len(mask) < 10:
+            if len(actual_atoms) < 10:
                 logging.warning(f"Layer {i} too small ({len(mask)} atoms), skipping")
                 continue
 
-            if len(mask) > 0.9 * len(z):
+            if len(actual_atoms) > 0.9 * len(z):
                 logging.error(f"Layer {i} ~ entire box, skipping")
                 continue
 
-            if not self.check_condition_of_region(coordinates[mask], velocities[mask], masses[mask]):
+            if not self.check_condition_of_region(velocities[mask], masses[mask], threshold=10):
                 continue
 
-            boundaries_of_the_box =     (
+            boundaries_of_the_box =     [
                     coordinates[mask][:, 0].min(),
                     coordinates[mask][:, 0].max(),
                     coordinates[mask][:, 1].min(),
                     coordinates[mask][:, 1].max(),
                     coordinates[mask][:, 2].min(),
-                    coordinates[mask][:, 2].max,
-            )
+                    coordinates[mask][:, 2].min() + lattice_constant*4,
+            ]
 
-            layers.append((mask, boundaries_of_the_box))
+            layers.append((np.where(mask)[0], boundaries_of_the_box))
 
-        if layers:
-            logging.info(f"FIRST LAYER SAMPLE: {layers[0][:10]}")
-            logging.info(f"Layer sizes: {[len(l) for l in layers]}")
+        # if layers:
+            # logging.info(f"FIRST LAYER SAMPLE: {layers[0][:10]}")
+            # logging.info(f"Layer sizes: {[len(l) for l in layers]}")
 
         return layers
 
