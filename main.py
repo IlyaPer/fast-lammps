@@ -87,15 +87,26 @@ while iter < iteration:
     nlocal = L.extract_global("nlocal") # the number of atoms owned by the current processor in a parallel simulation
     raw_ids = L.numpy.extract_atom("id")[:nlocal] 
     raw_pos = L.numpy.extract_atom("x")[:nlocal] 
-    raw_vel = L.numpy.extract_atom("v")[:nlocal] 
+    raw_vel = L.numpy.extract_atom("v")[:nlocal]
+    atom_types = L.numpy.extract_atom("type")[:nlocal]
+    masses_types = L.numpy.extract_atom("mass")
 
 
     idx = np.argsort(raw_ids) # get sorted by id bunch of atoms
     positions = raw_pos[idx]
     velocities = raw_vel[idx]
+    atom_types = atom_types[idx]
     natoms = nlocal
 
-    masses = np.repeat([196.196], natoms)
+    logging.info(f"{atom_types[:10]}")
+    logging.info(f"masses_types: {masses_types}")
+    masses = np.array([masses_types[i] for i in atom_types]) 
+
+    # masses = np.repeat([196.196], natoms) # extract masses
+
+    logging.info(f"masses >200: {masses[masses>200]}")
+    logging.info(f"masses : {masses.shape}")
+    logging.info(f"velocities : {velocities.shape}")
 
     masks_to_grain = solver.extract_interesting_regions(
         positions,velocities,masses,lattice_constant=A
@@ -105,7 +116,7 @@ while iter < iteration:
         logging.info(f"GRAINING OF ALL LAYERS IS COMPLETE. STOP.")
         break
 
-    for i, tuple_info in enumerate(masks_to_grain):
+    for i, tuple_info in enumerate(masks_to_grain): 
         mask, coordinates_of_region = tuple_info
 
         string_of_ids = " ".join(map(str, mask))
@@ -114,6 +125,9 @@ while iter < iteration:
         L.command(f"delete_atoms group delete_group")
         L.command(f"group delete_group delete")
         L.command("reset_atoms id")
+
+        coordinates_of_region[-2] = coordinates_of_region[-2] + A*2
+        coordinates_of_region[-1] = coordinates_of_region[-2] + A*6  
 
         coordinates_of_region_string = " ".join(map(str, coordinates_of_region))
         logging.warning(f"Coordinates fo: {coordinates_of_region_string}")

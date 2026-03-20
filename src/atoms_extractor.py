@@ -70,14 +70,14 @@ class ExampleLayerExtractor(Extractor):
     ):
 
         z = coordinates[:, 2]
-        logging.info(f"Positions: from {z.min()} to {z.max()}")
-        step = lattice_constant
+        step = lattice_constant*2
         logging.info(f"Using FCC layer spacing: step = {step}")
 
         zmax = z.max()
         zmin = z.min()
 
         layers = []
+        logging.error(f"================vvvvvvvvvvvvvvvvvvv===========================")
 
         for i in range(int((zmax-zmin)//step)):
             upper = zmax - i * step
@@ -91,8 +91,9 @@ class ExampleLayerExtractor(Extractor):
             mask = (z >= lower) & (z < upper)
             actual_atoms = coordinates[mask]
             
-            if np.any(masses > 200):
-                logging.info(f"SKIPPED ALREADY GRAINED ATOMS")
+            if np.any(masses[mask] > 200):
+                # logging.info(f"Mass of already grained atoms: {masses[masses[mask] > 200]}")
+                logging.info(f"SKIPPED ALREADY GRAINED ATOMS: min: {masses.min()}, max: {masses.max()}")
                 continue
             # mask = z[mask_local]
 
@@ -112,17 +113,19 @@ class ExampleLayerExtractor(Extractor):
                     coordinates[mask][:, 0].max(),
                     coordinates[mask][:, 1].min(),
                     coordinates[mask][:, 1].max(),
-                    coordinates[mask][:, 2].min(),
-                    coordinates[mask][:, 2].min() + lattice_constant*4,
+                    lower,
+                    upper - 1e-1,
             ]
 
             layers.append((np.where(mask)[0], boundaries_of_the_box))
+            logging.error(f"boundaries_of_the_box: {boundaries_of_the_box}")
 
         # if layers:
             # logging.info(f"FIRST LAYER SAMPLE: {layers[0][:10]}")
             # logging.info(f"Layer sizes: {[len(l) for l in layers]}")
-
+        logging.error(f"================^^^^^^^^^^^^^^^^^^^^^===========================")
         return layers
+    
 
     def visualize_interesting_regions(self, positions, mode='test'):
         pass

@@ -19,4 +19,4 @@ clean_records:
 	rm -rf records/* logs/*
 
 test_launch: clean_records
-	python main.py -k 4 -i 4000 -m 500
+	python main.py -k 4 -i 10000 -m 500
