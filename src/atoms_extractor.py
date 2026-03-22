@@ -131,3 +131,52 @@ class ExampleLayerExtractor(Extractor):
         pass
         # write("region_mask_already_grained.xyz", atoms[region_mask_already_grained])
 
+class FccCellsExtractor(Extractor):
+    def __init__(self):
+        super().__init__()
+
+    def check_condition_of_region(self, velocities, masses, threshold=10):
+
+        v_group = velocities
+        m_group = masses
+
+        total_mass = np.sum(m_group)
+        v_com = np.sum(v_group * m_group[:, None], axis=0) / total_mass
+
+        # Relative velocity (internal motion only)
+        v_rel = v_group - v_com
+
+        # Kinetic Energy = 0.5 * m * v^2
+        AMU_A2PS2_TO_EV = 1.0364269e-4
+        n_atoms = v_group.shape[0]
+
+        ke = 0.5 * np.sum(m_group * np.sum(v_rel**2, axis=1)) * AMU_A2PS2_TO_EV
+
+        current_T = 2 * ke / (3 * n_atoms * units.kB)
+
+        if n_atoms > 0:
+            current_T = 2 * ke / (3 * n_atoms * units.kB)
+            layer_temp = current_T
+        else:
+            layer_temp = 0.0
+
+        logging.info(
+            f"Количество атомов в слое: {len(m_group)}, температура слоя: {layer_temp}"
+        )
+
+        if (layer_temp > threshold):
+            return True
+
+        return False
+
+    def extract_interesting_regions(
+        self, coordinates, velocities, masses, lattice_constant, criteria="temp"
+    ):
+
+        #Clustering with fixed number of clusters?
+        return
+    
+
+    def visualize_interesting_regions(self, positions, mode='test'):
+        pass
+        # write("region_mask_already_grained.xyz", atoms[region_mask_already_grained])
