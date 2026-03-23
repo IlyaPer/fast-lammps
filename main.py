@@ -61,10 +61,11 @@ L.file('heat_aurum.in') # setup only, no dynamics run
 
 
 block = f"""
-pair_coeff      1 2 {EPSILON_CG} {SIGMA_CG}
+pair_coeff      1 2 0.0 1.0
 pair_coeff      2 2 {EPSILON_CG} {SIGMA_CG}
 mass            2 {ATOMIC_UNIT_MASS_CG}
 lattice         fcc {A_CG}
+change_box      all z scale 1.2
 """
 
 L.commands_string(block)
@@ -79,7 +80,7 @@ while iter < iteration:
         f"============================= STEP NUMBER {iter} ============================= "
     )
 
-    L.command("reset_atoms id sort yes")
+    # L.command("reset_atoms id sort yes")
     L.cmd.run(measure_frequency)
 
     natoms = lammps.get_natoms(L)
@@ -93,9 +94,12 @@ while iter < iteration:
 
 
     idx = np.argsort(raw_ids) # get sorted by id bunch of atoms
-    positions = raw_pos[idx]
-    velocities = raw_vel[idx]
-    atom_types = atom_types[idx]
+    # positions = raw_pos[idx]
+    # velocities = raw_vel[idx]
+    # atom_types = atom_types[idx]
+    positions = raw_pos
+    velocities = raw_vel
+    atom_types = atom_types
     natoms = nlocal
 
     logging.info(f"{atom_types[:10]}")
@@ -109,7 +113,7 @@ while iter < iteration:
     logging.info(f"velocities : {velocities.shape}")
 
     masks_to_grain = solver.extract_interesting_regions(
-        positions,velocities,masses,lattice_constant=A
+        positions,velocities,masses,lattice_constant=A, lattice_constant_cg=A_CG
     )
 
     if (len(masks_to_grain) == 0) and (iter > 10000):
@@ -117,36 +121,43 @@ while iter < iteration:
         break
 
     for i, tuple_info in enumerate(masks_to_grain): 
-        mask, coordinates_of_region = tuple_info
+        mask, positions_of_grained = tuple_info
+
+        mask = raw_ids[mask]
 
         string_of_ids = " ".join(map(str, mask))
 
         L.command(f"group delete_group id {string_of_ids}")
         L.command(f"delete_atoms group delete_group")
         L.command(f"group delete_group delete")
-        L.command("reset_atoms id")
 
-        coordinates_of_region[-2] = coordinates_of_region[-2] + A*2
-        coordinates_of_region[-1] = coordinates_of_region[-2] + A*6  
+        #topology set
+        for atom_position in positions_of_grained:
+            atom_position = " ".join(map(str, atom_position))
+            L.command(f'create_atoms 2 single {atom_position} units box')
+            logging.info(f"Создаю атом тут: {atom_position}")
 
-        coordinates_of_region_string = " ".join(map(str, coordinates_of_region))
-        logging.warning(f"Coordinates fo: {coordinates_of_region_string}")
-        L.command(f"lattice fcc {A_CG}")
-        L.command(f"region temp block {coordinates_of_region_string} units box")
-        L.command(f"create_atoms 2 region temp")
-        L.command(f"region temp delete")
+        # coordinates_of_region[-2] = coordinates_of_region[-2] + A_CG/2
+        # coordinates_of_region[-1] = coordinates_of_region[-1] + A_CG/2 + A_CG  # What if it crosses the simulation box?
+
+        # coordinates_of_region_string = " ".join(map(str, coordinates_of_region))
+        # logging.warning(f"Coordinates fo: {coordinates_of_region_string}")
+        # L.command(f"lattice fcc {A_CG}")
+        # L.command(f"region temp block {coordinates_of_region_string} units box")
+        # L.command(f"create_atoms 2 region temp")
+        # L.command(f"region temp delete")
 
         # delete extra atoms
-        coordinates_of_region[-2] = coordinates_of_region[-2] + 2
-        coordinates_of_region[-1] = coordinates_of_region[-2] + A_CG  
+        # coordinates_of_region[-2] = coordinates_of_region[-2] + A_CG - 2*1e-1
+        # coordinates_of_region[-1] = coordinates_of_region[-2] + 4* 1e-1
 
-        logging.info(f"New coords: {coordinates_of_region}")
-        coordinates_of_region_string = " ".join(map(str, coordinates_of_region))
-        L.command(f"region temp block {coordinates_of_region_string} units box")
-        L.command(f"group delete_group region temp")
-        L.command(f"delete_atoms group delete_group")
-        L.command(f"group delete_group delete")
-        L.command(f"region temp delete")
+        # logging.info(f"New coords: {coordinates_of_region}")
+        # coordinates_of_region_string = " ".join(map(str, coordinates_of_region))
+        # L.command(f"region temp block {coordinates_of_region_string} units box")
+        # L.command(f"group delete_group region temp")
+        # L.command(f"delete_atoms group delete_group")
+        # L.command(f"group delete_group delete")
+        # L.command(f"region temp delete")
         L.command("reset_atoms id")
         break
     mon.record()
