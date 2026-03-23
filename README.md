@@ -3,6 +3,9 @@
 This tool allows to dramatically speed up your molecular dynamics simulations using dynamic coarse-graining algorithm. 
 The example of the processes which were approximated with this extension^ heating aurum. The blocks where kinetic energy was lower than the threshold were approximated with larger particles (atoms).
 
+![](build/simple_grain.gif)
+
+
 ## Getting started quickly
 ### How does it work?
 This package speeds up ready molecular dynamics scripts and simulations, written on LAMMPS or ASE package. The only thing you need is to provide the initial conditions script in ``.in`` format to test-drive how fast your simalutions would become.
