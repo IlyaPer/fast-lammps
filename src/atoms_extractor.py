@@ -92,18 +92,9 @@ class ExampleLayerExtractor(Extractor):
             actual_atoms = coordinates[mask]
             
             if np.any(masses[mask] > 200):
-                # logging.info(f"Mass of already grained atoms: {masses[masses[mask] > 200]}")
                 logging.info(f"SKIPPED ALREADY GRAINED ATOMS: min: {masses.min()}, max: {masses.max()}")
                 continue
-            # mask = z[mask_local]
 
-            # if len(actual_atoms) < 10:
-            #     logging.warning(f"Layer {i} too small ({len(mask)} atoms), skipping")
-            #     continue
-
-            # if len(actual_atoms) > 0.9 * len(z):
-            #     logging.error(f"Layer {i} ~ entire box, skipping")
-            #     continue
 
             if not self.check_condition_of_region(velocities[mask], masses[mask], threshold=10):
                 continue
@@ -116,7 +107,6 @@ class ExampleLayerExtractor(Extractor):
             target_cells = target_atoms / 4.0
             n = int(round(target_cells))
 
-            # Подбираем nx, ny как целые множители n
             nx = int(round(n**0.5))
             if nx < 1:
                 nx = 1
@@ -124,33 +114,17 @@ class ExampleLayerExtractor(Extractor):
             if ny < 1:
                 ny = 1
 
-            # Создаём плоскость
             au = bulk("Au", "fcc", a=lattice_constant_cg, cubic=True)
             plane = au.repeat((3, 4, 1))
             positions_of_grained = plane.get_positions()
             mask_bebe = positions_of_grained[:, 2] < lattice_constant_cg / 2
 
-            # Применяем маску к объекту Atoms
             plane = plane[mask_bebe]
             positions_of_grained = plane.get_positions()
             positions_of_grained[:,2] += (lower+upper)/2
 
-            # boundaries_of_the_box =     [
-            #         coordinates[mask][:, 0].min(),
-            #         coordinates[mask][:, 0].max(),
-            #         coordinates[mask][:, 1].min(),
-            #         coordinates[mask][:, 1].max(),
-            #         lower,
-            #         upper,
-            # ]
 
             layers.append((mask, positions_of_grained))
-            logging.error(f"positions_of_grained.shape: {positions_of_grained.shape}")
-
-        # if layers:
-            # logging.info(f"FIRST LAYER SAMPLE: {layers[0][:10]}")
-            # logging.info(f"Layer sizes: {[len(l) for l in layers]}")
-        logging.error(f"================^^^^^^^^^^^^^^^^^^^^^===========================")
         return layers
     
 
@@ -187,18 +161,42 @@ class FccCellsExtractor(Extractor):
         else:
             layer_temp = 0.0
 
-        logging.info(
-            f"Количество атомов в слое: {len(m_group)}, температура слоя: {layer_temp}"
-        )
-
         if (layer_temp > threshold):
             return True
 
         return False
 
     def extract_interesting_regions(
-        self, coordinates, velocities, masses, lattice_constant, criteria="temp"
+        self, lammps_instance
     ):
+        """
+        Extracts fcc cells from the simulation. Extractor is resistant to fluctuations. The algorithm is described below.
+        1) It captures atoms which are already seems like a part of fcc cells. This part is made by Common Neighbour Analysis by LAMMPS itself.
+        2) Atoms which seems like fcc are passed to clusterization K-means with fixed number of atoms in one cluster. If a cluster contains less atoms than 12 - it is skipped??
+        
+        Function returns list of tuple objects. The first member of tuple is list of ids of atoms to be changed, the second member is postion of atoms which are going to approximate target atom.
+
+        :param lammps_instance: the lammps object.
+        :type arg1: lammps class
+        :param arg2: The second argument.
+        :type arg2: str
+        :returns: The result of the function.
+        :rtype: bool
+        :raises SomeException: If a certain condition occurs.
+        """
+
+        natoms = lammps.get_natoms(lammps_instance)
+
+        compute 1 all cna/atom 3.08
+
+        data = lmp.extract_compute("1", 1, 1)
+
+        nlocal = L.extract_global("nlocal") # the number of atoms owned by the current processor in a parallel simulation
+        raw_ids = L.numpy.extract_atom("id")[:nlocal] 
+        raw_pos = L.numpy.extract_atom("x")[:nlocal] 
+        raw_vel = L.numpy.extract_atom("v")[:nlocal]
+        atom_types = L.numpy.extract_atom("type")[:nlocal]
+        masses_types = L.numpy.extract_atom("mass")
 
         #Clustering with fixed number of clusters?
         return
