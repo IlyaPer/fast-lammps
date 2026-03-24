@@ -6,6 +6,11 @@ from ase.io import read
 from ase import units
 import os
 from ase.io import write
+from sklearn.cluster import MeanShift
+from scipy.ndimage import center_of_mass
+from ovito.io.lammps import lammps_to_ovito
+from ovito.modifiers import CommonNeighborAnalysisModifier
+
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +172,7 @@ class FccCellsExtractor(Extractor):
         return False
 
     def extract_interesting_regions(
-        self, lammps_instance
+        self, lammps_instance, lattice_constant
     ):
         """
         Extracts fcc cells from the simulation. Extractor is resistant to fluctuations. The algorithm is described below.
@@ -178,27 +183,75 @@ class FccCellsExtractor(Extractor):
 
         :param lammps_instance: the lammps object.
         :type arg1: lammps class
-        :param arg2: The second argument.
-        :type arg2: str
-        :returns: The result of the function.
-        :rtype: bool
-        :raises SomeException: If a certain condition occurs.
+        :param lattice_constant: Lattice constant which wiil be used as cuttof in CNA and Mean Shift Clustering.
+        :type lattice_constant: float
         """
 
-        natoms = lammps.get_natoms(lammps_instance)
+        # natoms = lammps.get_natoms(lammps_instance)
 
-        compute 1 all cna/atom 3.08
+        # lammps_instance.command(f"compute nca all cna/atom {lattice_constant}")
 
-        data = lmp.extract_compute("1", 1, 1)
+        # all_kinds = lammps_instance.extract_compute("nca", 1, 1)
+        # fcc_atoms_identificators = np.where(all_kinds[all_kinds == 1])[0]
 
-        nlocal = L.extract_global("nlocal") # the number of atoms owned by the current processor in a parallel simulation
-        raw_ids = L.numpy.extract_atom("id")[:nlocal] 
-        raw_pos = L.numpy.extract_atom("x")[:nlocal] 
-        raw_vel = L.numpy.extract_atom("v")[:nlocal]
-        atom_types = L.numpy.extract_atom("type")[:nlocal]
-        masses_types = L.numpy.extract_atom("mass")
+        # natoms = lammps_instance.get_natoms(lammps_instance)
 
-        #Clustering with fixed number of clusters?
+        nlocal = lammps_instance.extract_global("nlocal") # the number of atoms owned by the current processor in a parallel simulation
+        raw_ids = lammps_instance.numpy.extract_atom("id")[:nlocal] 
+        raw_pos = lammps_instance.numpy.extract_atom("x")[:nlocal] 
+        raw_vel = lammps_instance.numpy.extract_atom("v")[:nlocal]
+        atom_types = lammps_instance.numpy.extract_atom("type")[:nlocal]
+        masses_types = lammps_instance.numpy.extract_atom("mass")
+        data = lammps_to_ovito(lammps_instance)
+
+        try:
+            mode = CommonNeighborAnalysisModifier.Mode.AdaptiveCutoff
+        except AttributeError:
+            mode = CommonNeighborAnalysisModifier.Mode.Adaptive
+        
+        modifier = CommonNeighborAnalysisModifier(mode=mode)
+        data.apply(modifier)
+        
+        structure_types = data.particles['Structure Type']  # 1 = FCC
+        logging.info(f'fcc_atoms_identificators: {structure_types};')
+
+        fcc_atoms_identificators = np.where(structure_types == 1)[0]
+
+
+        not_grained = np.where(atom_types)[0]
+        fcc_atoms_identificators = list(set(not_grained) & set(fcc_atoms_identificators))
+
+        positions = raw_pos[fcc_atoms_identificators]
+        velocities = raw_vel[fcc_atoms_identificators]
+        masses = np.array([masses_types[i] for i in atom_types])
+
+        if len(positions) == 0:
+            return
+
+        clustering = MeanShift(bandwidth=lattice_constant).fit(positions)
+
+        for cluster_idx in np.unique(clustering.labels_):
+            # identificators of where the cluster label is
+            ids = np.where(clustering.labels_ == cluster_idx)[0]
+
+            # get coordinates of quazi-atom
+
+            if self.check_condition_of_region(velocities[ids], masses[ids], threshold=10): # change to kinetic energy?
+                lammps_instance.command(f"group delete_group id {" ".join(map(str, ids))}")
+                lammps_instance.command(f"delete_atoms group delete_group")
+                lammps_instance.command(f"group delete_group delete")
+
+
+                # TODO set velocities!
+                
+                center_coords = clustering.cluster_centers_[cluster_idx]
+                # com_coords = center_of_mass(raw_ids[ids])
+
+                atom_position = " ".join(map(str, center_coords))
+
+                # grained_atoms.append(com_coords)
+                lammps_instance.command(f'create_atoms 2 single {atom_position} units box')
+
         return
     
 
