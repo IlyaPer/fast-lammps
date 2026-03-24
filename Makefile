@@ -19,4 +19,12 @@ clean_records:
 	rm -rf records/* logs/*
 
 test_launch: clean_records
-	python main.py -k 4 -i 10000 -m 500
+	python main.py --file heat_aurum.in -k 4 -i 10000 -m 500 --solver layer
+
+
+test_launch_fcc: clean_records
+	python launcher.py --file heat_aurum.in -i 3000 -m 500 --solver fcc
+
+
+test_launch_fcc_small: clean_records
+	python launcher.py --file heat_aurum_small.in -i 10000 -m 500 --solver fcc
