@@ -10,6 +10,9 @@ from sklearn.cluster import MeanShift
 from scipy.ndimage import center_of_mass
 from ovito.io.lammps import lammps_to_ovito
 from ovito.modifiers import CommonNeighborAnalysisModifier
+from ovito.modifiers import PolyhedralTemplateMatchingModifier
+from k_means_constrained import KMeansConstrained
+from ase.build import bulk
 
 
 logger = logging.getLogger(__name__)
@@ -22,7 +25,7 @@ class Extractor(ABC):
         pass
 
     @abstractmethod
-    def check_condition_of_region(self, velocities, masses) -> bool:
+    def check_condition_of_region(self, *_) -> bool:
         """Check condition of region"""
         pass
 
@@ -70,7 +73,7 @@ class ExampleLayerExtractor(Extractor):
 
         return False
 
-    def extract_interesting_regions(
+    def visualize_interesting_regions(
         self, coordinates, velocities, masses, lattice_constant, lattice_constant_cg, criteria="temp"
     ):
 
@@ -104,7 +107,6 @@ class ExampleLayerExtractor(Extractor):
             if not self.check_condition_of_region(velocities[mask], masses[mask], threshold=10):
                 continue
 
-            from ase.build import bulk
 
             au = bulk("Au", "fcc", a=lattice_constant_cg, cubic=True)
             target_atoms = len(actual_atoms) / (4**3)
@@ -133,13 +135,135 @@ class ExampleLayerExtractor(Extractor):
         return layers
     
 
-    def visualize_interesting_regions(self, positions, mode='test'):
-        pass
+    # def visualize_interesting_regions(self, positions, mode='test'):
+    #     pass
         # write("region_mask_already_grained.xyz", atoms[region_mask_already_grained])
 
 class FccCellsExtractor(Extractor):
     def __init__(self):
         super().__init__()
+
+    import numpy as np
+
+    def _init_fcc_cells_strict(self, lammps_instance, lattice_constant, expected_atoms_per_cell=32):
+
+        import numpy as np
+        
+        nlocal = lammps_instance.extract_global("nlocal")
+        raw_ids = lammps_instance.numpy.extract_atom("id")[:nlocal]
+        raw_pos = lammps_instance.numpy.extract_atom("x")[:nlocal]  # (N, 3)
+        
+        box = lammps_instance.extract_box()
+        xlo, xhi = box[0][0], box[1][0]
+        ylo, yhi = box[0][1], box[1][1]
+        zlo, zhi = box[0][2], box[1][2]
+        
+        cell_size = lattice_constant * 2.0 # 2×2×2 FCC = 32 атома
+        
+        nx = int(np.floor((xhi - xlo) / cell_size))
+        ny = int(np.floor((yhi - ylo) / cell_size))
+        nz = int(np.floor((zhi - zlo) / cell_size))
+        
+        used = np.zeros(nlocal, dtype=bool)
+        
+        mega_cells = {}
+        res = []
+
+        box = lammps_instance.extract_box()
+        xlo, xhi = box[0][0], box[1][0]
+        ylo, yhi = box[0][1], box[1][1]
+        zlo, zhi = box[0][2], box[1][2]
+
+        nx = int((xhi - xlo) // cell_size)
+        ny = int((yhi - ylo) // cell_size)
+        nz = int((zhi - zlo) // cell_size)
+
+        cells = {}
+
+        for ix in range(nx):
+            for iy in range(ny):
+                for iz in range(nz):
+
+                    x_min = xlo + ix * cell_size
+                    x_max = x_min + cell_size
+
+                    y_min = ylo + iy * cell_size
+                    y_max = y_min + cell_size
+
+                    z_min = zlo + iz * cell_size
+                    z_max = z_min + cell_size
+
+                    cells[(ix, iy, iz)] = (x_min, x_max, y_min, y_max, z_min, z_max)
+
+        return cells
+
+    def visualize_cells(self, lammps_instance, fcc_cells, cell_size=4.08*4, output_prefix='cell', output_dir='./shit'):
+
+        if output_dir is None:
+            output_dir = './'
+        os.makedirs(output_dir, exist_ok=True)
+        # output_dir = './shit'
+        
+        nlocal = lammps_instance.extract_global("nlocal")
+        raw_ids = lammps_instance.numpy.extract_atom("id")[:nlocal]
+        raw_pos = lammps_instance.numpy.extract_atom("x")[:nlocal]
+        raw_types = lammps_instance.numpy.extract_atom("type")[:nlocal]
+        
+        symbols = ['Au' for _ in raw_types]
+        id_to_idx = {int(raw_ids[i]): i for i in range(nlocal)}
+        
+        all_atoms_data = []
+        cell_counter = 0
+        
+        for key, ids in fcc_cells.items():
+            if key == 'lost':
+                continue
+            indices = [id_to_idx[int(aid)] for aid in ids if int(aid) in id_to_idx]
+            if not indices:
+                continue
+            positions = raw_pos[indices]
+            symbols_cell = [symbols[i] for i in indices]
+            atoms_cell = Atoms(symbols=symbols_cell, positions=positions)
+            fname = os.path.join(output_dir, f"{output_prefix}_{key[0]}_{key[1]}_{key[2]}.xyz")
+            write(fname, atoms_cell)
+            cell_label = f"{key[0]},{key[1]},{key[2]}"
+            for pos, sym in zip(positions, symbols_cell):
+                all_atoms_data.append((pos, sym, cell_label))
+            cell_counter += 1
+        
+        if 'lost' in fcc_cells and fcc_cells['lost']:
+            lost_ids = fcc_cells['lost']
+            lost_indices = [id_to_idx[int(aid)] for aid in lost_ids if int(aid) in id_to_idx]
+            if lost_indices:
+                lost_positions = raw_pos[lost_indices]
+                lost_symbols = [symbols[i] for i in lost_indices]
+                for pos, sym in zip(lost_positions, lost_symbols):
+                    all_atoms_data.append((pos, sym, 'lost'))
+        
+        if all_atoms_data:
+            all_positions = np.array([d[0] for d in all_atoms_data])
+            all_symbols = [d[1] for d in all_atoms_data]
+            all_labels = [d[2] for d in all_atoms_data]
+            unique_labels = sorted(set(all_labels))
+            label_to_int = {lab: i for i, lab in enumerate(unique_labels)}
+            cell_numbers = np.array([label_to_int[lab] for lab in all_labels])
+            all_atoms = Atoms(symbols=all_symbols, positions=all_positions)
+            all_atoms.arrays['cell_id'] = cell_numbers
+            write(os.path.join(output_dir, f"{output_prefix}_all.extxyz"), all_atoms, format='extxyz')
+            print(f"[{output_prefix}] Создано {cell_counter} файлов ячеек + all_cells в {output_dir}")
+        return output_dir
+
+    def _rand_condition(self, threshold=0.1):
+
+        res = False
+        import random
+
+        number = random.random()
+
+        if number < threshold:
+            res = True
+
+        return res
 
     def check_condition_of_region(self, velocities, masses, threshold=10):
 
@@ -172,7 +296,7 @@ class FccCellsExtractor(Extractor):
         return False
 
     def extract_interesting_regions(
-        self, lammps_instance, lattice_constant
+        self, lammps_instance, lattice_constant, lattice_constant_cg, mass_cg
     ):
         """
         Extracts fcc cells from the simulation. Extractor is resistant to fluctuations. The algorithm is described below.
@@ -187,71 +311,104 @@ class FccCellsExtractor(Extractor):
         :type lattice_constant: float
         """
 
-        # natoms = lammps.get_natoms(lammps_instance)
-
-        # lammps_instance.command(f"compute nca all cna/atom {lattice_constant}")
-
-        # all_kinds = lammps_instance.extract_compute("nca", 1, 1)
-        # fcc_atoms_identificators = np.where(all_kinds[all_kinds == 1])[0]
-
-        # natoms = lammps_instance.get_natoms(lammps_instance)
-
         nlocal = lammps_instance.extract_global("nlocal") # the number of atoms owned by the current processor in a parallel simulation
         raw_ids = lammps_instance.numpy.extract_atom("id")[:nlocal] 
         raw_pos = lammps_instance.numpy.extract_atom("x")[:nlocal] 
         raw_vel = lammps_instance.numpy.extract_atom("v")[:nlocal]
         atom_types = lammps_instance.numpy.extract_atom("type")[:nlocal]
         masses_types = lammps_instance.numpy.extract_atom("mass")
-        data = lammps_to_ovito(lammps_instance)
-
-        try:
-            mode = CommonNeighborAnalysisModifier.Mode.AdaptiveCutoff
-        except AttributeError:
-            mode = CommonNeighborAnalysisModifier.Mode.Adaptive
         
-        modifier = CommonNeighborAnalysisModifier(mode=mode)
-        data.apply(modifier)
-        
-        structure_types = data.particles['Structure Type']  # 1 = FCC
-        logging.info(f'fcc_atoms_identificators: {structure_types};')
+        box = lammps_instance.extract_box()
+        xlo, xhi = box[0][0], box[1][0]
+        ylo, yhi = box[0][1], box[1][1]
+        zlo, zhi = box[0][2], box[1][2]
 
-        fcc_atoms_identificators = np.where(structure_types == 1)[0]
+        cell_size = lattice_constant * 2.0
 
+        x_secants = np.arange(xlo, xhi, cell_size)
+        y_secants = np.arange(ylo, yhi, cell_size)
+        z_secants = np.arange(zlo, zhi, cell_size)
 
-        not_grained = np.where(atom_types)[0]
-        fcc_atoms_identificators = list(set(not_grained) & set(fcc_atoms_identificators))
+        lammps_instance.command(f"group type1 type 1")
+
+        not_grained = np.where(atom_types == 1)[0]
+        logging.info(f'not_grained: {len(not_grained)}, total: {len(atom_types)}')
+        fcc_atoms_identificators = not_grained
+        already_grained_ids = np.where(atom_types == 2)[0]
 
         positions = raw_pos[fcc_atoms_identificators]
-        velocities = raw_vel[fcc_atoms_identificators]
-        masses = np.array([masses_types[i] for i in atom_types])
+
+        mega_cells = self._init_fcc_cells_strict(lammps_instance=lammps_instance, lattice_constant=lattice_constant, expected_atoms_per_cell=32)
+
+        import random
+        items = list(mega_cells.items())
+        # random.shuffle(items)
+        logging.error(len(items))
+
+        types = lammps_instance.numpy.extract_atom("type")
+        pos = lammps_instance.numpy.extract_atom("x")
+
+        for key, value in items:                
+            x_min, x_max, y_min, y_max, z_min, z_max = value
+            dx = x_max - x_min
+            dy = y_max - y_min
+            dz = z_max - z_min
+
+            x_min = max(x_min, xlo)
+            x_max = min(x_max, xhi)
+            y_min = max(y_min, ylo)
+            y_max = min(y_max, yhi)
+            z_min = max(z_min, zlo)
+            z_max = min(z_max, zhi)
+
+            if dx > 10 or dy > 10 or dz > 10:
+                logging.error(f'x_min, x_max, y_min, y_max, z_min, z_max {x_min, x_max, y_min, y_max, z_min, z_max}')
+                logging.error(f'{x_min} {x_max} {y_min} {y_max} {z_min} {z_max}')
+                continue
+            lammps_instance.command(f"region kill block {x_min} {x_max} {y_min} {y_max} {z_min} {z_max} units box")
+            # lammps_instance.command("group kill_region region kill")
+
+            if self._rand_condition(0.25):
+                
+
+                in_region = (
+                    (pos[:, 0] >= x_min) & (pos[:, 0] <= x_max) &
+                    (pos[:, 1] >= y_min) & (pos[:, 1] <= y_max) &
+                    (pos[:, 2] >= z_min) & (pos[:, 2] <= z_max)
+                )
+
+                count_type1 = np.sum((types == 1) & in_region)
+                count_type2 = np.sum((types == 2) & in_region)
+
+                total = count_type1 + count_type2
+
+                if total == 0:
+                    is_cg = False
+                else:
+                    is_cg = count_type2 > 0
+
+                if is_cg:
+                    typeatom = 1
+                    lammps_instance.command(f"lattice fcc {lattice_constant}")
+                else:
+                    lammps_instance.command(f"lattice fcc {lattice_constant_cg-0.05}")
+                    typeatom = 2
+
+                lammps_instance.command(f'delete_atoms region kill')
+                lammps_instance.command(f'create_atoms {typeatom} region kill')
+                lammps_instance.command(f"region kill delete")
+                continue
+
+            lammps_instance.command(f"region kill delete")
 
         if len(positions) == 0:
-            return
+            return  
+        logging.info(f'collecting fcc: {len(mega_cells)}')
+        noise = np.random.normal(0, .1, size=positions.shape)
+    
+        positions += noise
 
-        clustering = MeanShift(bandwidth=lattice_constant).fit(positions)
-
-        for cluster_idx in np.unique(clustering.labels_):
-            # identificators of where the cluster label is
-            ids = np.where(clustering.labels_ == cluster_idx)[0]
-
-            # get coordinates of quazi-atom
-
-            if self.check_condition_of_region(velocities[ids], masses[ids], threshold=10): # change to kinetic energy?
-                lammps_instance.command(f"group delete_group id {" ".join(map(str, ids))}")
-                lammps_instance.command(f"delete_atoms group delete_group")
-                lammps_instance.command(f"group delete_group delete")
-
-
-                # TODO set velocities!
-                
-                center_coords = clustering.cluster_centers_[cluster_idx]
-                # com_coords = center_of_mass(raw_ids[ids])
-
-                atom_position = " ".join(map(str, center_coords))
-
-                # grained_atoms.append(com_coords)
-                lammps_instance.command(f'create_atoms 2 single {atom_position} units box')
-
+        #  TODO set velocities!
         return
     
 
