@@ -338,6 +338,10 @@ class FccCellsExtractor(Extractor):
 
         positions = raw_pos[fcc_atoms_identificators]
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 4e67273319cfb7043a360fe1b7d68e836049dcf7
         mega_cells = self._init_fcc_cells_strict(lammps_instance=lammps_instance, lattice_constant=lattice_constant, expected_atoms_per_cell=32)
 
         import random

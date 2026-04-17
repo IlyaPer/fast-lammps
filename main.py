@@ -11,11 +11,13 @@ parser = argparse.ArgumentParser(
     epilog="Text at the bottom of help",
 )
 
+parser.add_argument("-f", "--file")
 parser.add_argument("-k", "--scale")
 parser.add_argument("-i", "--iteration")
 parser.add_argument("-m", "--measure_frequency")
 parser.add_argument("-l", "--log_interval")
 parser.add_argument("-d", "--delete_layer")
+parser.add_argument("--solver")
 
 args = parser.parse_args()
 
@@ -48,16 +50,13 @@ def compute_params_CG(scale_factor):
 L = lammps()
 solver = ae.ExampleLayerExtractor()
 
-mon = ResourceMonitor()
-mon.start()
-
 SIGMA_CG, A_CG, EPSILON_CG, ATOMIC_UNIT_MASS_CG = compute_params_CG(SCALE_FACTOR)
 
 logging.info(
     f"Sigma {SIGMA_CG}, Lattice {A_CG}, eps {EPSILON_CG}, Mass {ATOMIC_UNIT_MASS_CG}"
 )
 
-L.file('heat_aurum.in') # setup only, no dynamics run
+L.file(args.file) # setup only, no dynamics run
 
 
 block = f"""
@@ -73,6 +72,7 @@ L.commands_string(block)
 
 logging.info("The simulation started successfully.")
 iter = 0
+
 
 
 while iter < iteration:
@@ -106,7 +106,6 @@ while iter < iteration:
     logging.info(f"masses_types: {masses_types}")
     masses = np.array([masses_types[i] for i in atom_types]) 
 
-    # masses = np.repeat([196.196], natoms) # extract masses
 
     logging.info(f"masses >200: {masses[masses>200]}")
     logging.info(f"masses : {masses.shape}")
@@ -137,31 +136,8 @@ while iter < iteration:
             L.command(f'create_atoms 2 single {atom_position} units box')
             logging.info(f"Создаю атом тут: {atom_position}")
 
-        # coordinates_of_region[-2] = coordinates_of_region[-2] + A_CG/2
-        # coordinates_of_region[-1] = coordinates_of_region[-1] + A_CG/2 + A_CG  # What if it crosses the simulation box?
-
-        # coordinates_of_region_string = " ".join(map(str, coordinates_of_region))
-        # logging.warning(f"Coordinates fo: {coordinates_of_region_string}")
-        # L.command(f"lattice fcc {A_CG}")
-        # L.command(f"region temp block {coordinates_of_region_string} units box")
-        # L.command(f"create_atoms 2 region temp")
-        # L.command(f"region temp delete")
-
-        # delete extra atoms
-        # coordinates_of_region[-2] = coordinates_of_region[-2] + A_CG - 2*1e-1
-        # coordinates_of_region[-1] = coordinates_of_region[-2] + 4* 1e-1
-
-        # logging.info(f"New coords: {coordinates_of_region}")
-        # coordinates_of_region_string = " ".join(map(str, coordinates_of_region))
-        # L.command(f"region temp block {coordinates_of_region_string} units box")
-        # L.command(f"group delete_group region temp")
-        # L.command(f"delete_atoms group delete_group")
-        # L.command(f"group delete_group delete")
-        # L.command(f"region temp delete")
         L.command("reset_atoms id")
         break
-    mon.record()
 
     L.command("run 0")
     iter += measure_frequency
-mon.end()
