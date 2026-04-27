@@ -27,4 +27,7 @@ test_launch_fcc: clean_records
 
 
 test_launch_fcc_small: clean_records
-	python launcher.py --file heat_aurum_small.in -i 10000 -m 500 --solver fcc
+	python launcher.py --file heat_aurum_small.in -i 10000 -m 250 --solver fcc
+
+test_crack: clean_records
+	python crack_launcher.py --file tests/crack_ni_lg_velocity_set.in -i 10000 -m 250 -s 2 --solver fcc
