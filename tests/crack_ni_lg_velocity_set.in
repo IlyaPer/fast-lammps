@@ -12,16 +12,17 @@ variable        delta_y equal 0.00025
 
 lattice		    fcc ${lattice_constant}
 region		    box block 0 20 0 20 0 20 units lattice
-create_box	    1 box
+create_box	    2 box
 create_atoms	1 box
 
 #pair_style      eam/alloy
-#pair_coeff      * * tests/Mishin-Ni-Al-2009.eam.alloy Ni
+#pair_coeff      * * Mishin-Ni-Al-2009.eam.alloy Ni
 
 pair_style      lj/cut 7.5
-pair_coeff      1 1 0.3729 2.2808
+pair_coeff      * * 0.3729 2.2808
 
 mass		    1 58.6934
+mass            2 1
 
 
 #compute         peratom all stress/atom pair viria       
@@ -71,7 +72,7 @@ timestep        0.0025
 velocity        all create 0.1 511124 dist gaussian rot yes mom yes
 fix             relax all nvt temp 0.1 300 1.0
 thermo          500
-run             500
+run             100
 unfix           relax
 
 thermo          250
@@ -89,10 +90,11 @@ group           mobile subtract all boundary
 
 
 compute         stress_atom all stress/atom NULL
+compute         pe_atom all pe/atom
 variable        vol_avg equal "vol / count(all)"
 variable        stressx atom "c_stress_atom[1] / v_vol_avg * 160.218"
 variable        vonMises atom "sqrt( ((c_stress_atom[1]-c_stress_atom[2])^2 + (c_stress_atom[2]-c_stress_atom[3])^2 + (c_stress_atom[3]-c_stress_atom[1])^2 + 6*(c_stress_atom[4]^2 + c_stress_atom[5]^2 + c_stress_atom[6]^2)) / 2 ) / v_vol_avg * 160.218"
-dump            1 all custom 500 dump.crack.lammpstrj id type x y z fx fy fz v_stressx v_vonMises
+dump            1 all custom 500 dump_accurate.crack_GRAIN.lammpstrj id type x y z fx fy fz v_stressx v_vonMises c_pe_atom
 dump_modify     1 sort id
 
 
@@ -103,4 +105,13 @@ velocity        top set 0.0 0.1 0.0
 velocity        bot set 0.0 -0.1 0.0
 
 
-run             20000
+
+## NVT equilibration
+#velocity        all create 300.0 12345 mom yes rot yes dist gaussian
+#fix             nvt_run all nvt temp 300.0 300.0 0.1
+#
+## Deformation (strain rate = 0.02 per ps)
+#fix             deform_run all deform 1 z erate 0.02 remap x
+#timestep        0.001
+
+#run             40000

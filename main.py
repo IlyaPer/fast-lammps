@@ -3,7 +3,7 @@ import numpy as np
 import argparse
 import logging
 import src.atoms_extractor as ae
-from src.monitor import ResourceMonitor 
+from build.monitor import ResourceMonitor 
 
 parser = argparse.ArgumentParser(
     prog="Heating_Aurum",

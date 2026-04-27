@@ -2,3 +2,7 @@ __pycache__/
 *.xyz
 *.png
 *.ipynb
+*.lammpstrj
+*.alloy
+.env
+settings.json
