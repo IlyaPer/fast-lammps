@@ -64,17 +64,23 @@ class ExampleLayerExtractor(Extractor):
             f"Количество атомов в слое: {len(m_group)}, температура слоя: {layer_temp}"
         )
 
-        if (layer_temp > threshold):
+        if layer_temp > threshold:
             return True
 
         return False
 
     def visualize_interesting_regions(
-        self, coordinates, velocities, masses, lattice_constant, lattice_constant_cg, criteria="temp"
+        self,
+        coordinates,
+        velocities,
+        masses,
+        lattice_constant,
+        lattice_constant_cg,
+        criteria="temp",
     ):
 
         z = coordinates[:, 2]
-        step = lattice_constant*2 + 1e-1
+        step = lattice_constant * 2 + 1e-1
         logging.info(f"Using FCC layer spacing: step = {step}")
 
         zmax = 40.08
@@ -83,7 +89,7 @@ class ExampleLayerExtractor(Extractor):
         layers = []
         logging.error(f"================vvvvvvvvvvvvvvvvvvv===========================")
 
-        for i in range(int((zmax-zmin)//step)+1):
+        for i in range(int((zmax - zmin) // step) + 1):
             upper = zmax - i * step
             lower = upper - step
 
@@ -94,15 +100,17 @@ class ExampleLayerExtractor(Extractor):
 
             mask = (z >= lower) & (z <= upper)
             actual_atoms = coordinates[mask]
-            
+
             if np.any(masses[mask] > 200):
-                logging.info(f"SKIPPED ALREADY GRAINED ATOMS: min: {masses.min()}, max: {masses.max()}")
+                logging.info(
+                    f"SKIPPED ALREADY GRAINED ATOMS: min: {masses.min()}, max: {masses.max()}"
+                )
                 continue
 
-
-            if not self.check_condition_of_region(velocities[mask], masses[mask], threshold=10):
+            if not self.check_condition_of_region(
+                velocities[mask], masses[mask], threshold=10
+            ):
                 continue
-
 
             au = bulk("Au", "fcc", a=lattice_constant_cg, cubic=True)
             target_atoms = len(actual_atoms) / (4**3)
@@ -124,33 +132,41 @@ class ExampleLayerExtractor(Extractor):
 
             plane = plane[mask_bebe]
             positions_of_grained = plane.get_positions()
-            positions_of_grained[:,2] += (lower+upper)/2
-
+            positions_of_grained[:, 2] += (lower + upper) / 2
 
             layers.append((mask, positions_of_grained))
         return layers
-    
 
     # def visualize_interesting_regions(self, positions, mode='test'):
     #     pass
-        # write("region_mask_already_grained.xyz", atoms[region_mask_already_grained])
+    # write("region_mask_already_grained.xyz", atoms[region_mask_already_grained])
+
 
 class FccCellsExtractor(Extractor):
-    def __init__(self, lammps_extractor : LammpsCommunicator, lattice_contant : float, lattice_constant_cg = 7.04, lower_threshold=-3., upper_threshold=-0.7):
+    def __init__(
+        self,
+        lammps_extractor: LammpsCommunicator,
+        lattice_contant: float,
+        lattice_constant_cg=7.04,
+        lower_threshold=-3.0,
+        upper_threshold=-0.7,
+    ):
         super().__init__()
 
         from ase.build import bulk
 
-        ni = bulk('Ni', 'fcc', a=3.52, cubic=True)
+        ni = bulk("Ni", "fcc", a=3.52, cubic=True)
 
-        self.model_fcc_positions = ni.repeat((2,2,2)).get_positions()
+        self.model_fcc_positions = ni.repeat((2, 2, 2)).get_positions()
         self.lammps_extractor = lammps_extractor
 
-        ni = bulk('Ni', 'fcc', a=3.52*2, cubic=True)
-        self.model_mega_fcc_positions = ni.repeat((1,1,1)).get_positions()
+        ni = bulk("Ni", "fcc", a=3.52 * 2, cubic=True)
+        self.model_mega_fcc_positions = ni.repeat((1, 1, 1)).get_positions()
         self.lattice_constant = lattice_contant
 
-        self.cell_size = self.lattice_constant * 2.0 + 1e-1 # Accept a) Fluctuations b) Intersections?
+        self.cell_size = (
+            self.lattice_constant * 2.0
+        )  # Accept a) Fluctuations b) Intersections?
 
         self.LOWER_THRESHOLD = lower_threshold
         self.UPPER_THRESHOLD = upper_threshold
@@ -173,12 +189,16 @@ class FccCellsExtractor(Extractor):
     def set_communicator(self, lammps_instance):
         self.lammps_extractor = LammpsCommunicator(lammps_instance)
 
-    def get_communicator(self):
+    def get_communicator(self) -> LammpsCommunicator:
         return self.lammps_extractor
 
     @override
-    def extract_interesting_regions(self,):
-        self.xlo, self.xhi, self.ylo, self.yhi, self.zlo, self.zhi = self.lammps_extractor.__get_box_size__()
+    def extract_interesting_regions(
+        self,
+    ):
+        self.xlo, self.xhi, self.ylo, self.yhi, self.zlo, self.zhi = (
+            self.lammps_extractor.__get_box_size__()
+        )
 
         self.clear_extractor()
         cell_size = self.lattice_constant * 2.0
@@ -196,85 +216,101 @@ class FccCellsExtractor(Extractor):
 
         self._repair_underfilled_cells()
 
-    
     def _get_cell_ids(self, ix, iy, iz):
         """
         Receives the identificators of atoms inside the mega cell
         """
 
-        positions = self.lammps_extractor.__get_positions__() # Should be sorted by id or not?
+        positions = (
+            self.lammps_extractor.__get_positions__()
+        )  # Should be sorted by id or not?
 
-        x_min = self.xlo + (ix) * self.cell_size
-        x_max = x_min + self.cell_size
-        y_min = self.ylo + (iy) * self.cell_size
-        y_max = y_min + self.cell_size
-        z_min = self.zlo + (iz) * self.cell_size
-        z_max = z_min + self.cell_size
+        x_min = self.xlo + (ix) * self.cell_size - 0.1
+        x_max = x_min + self.cell_size + 0.2
+        y_min = self.ylo + (iy) * self.cell_size - 0.1
+        y_max = y_min + self.cell_size + 0.2
+        z_min = self.zlo + (iz) * self.cell_size - 0.1
+        z_max = z_min + self.cell_size+ 0.2
 
+        # collects atoms in the cell
         mask = (
-            (positions[:, 0] >= x_min) & (positions[:, 0] <= x_max) &
-            (positions[:, 1] >= y_min) & (positions[:, 1] <= y_max) &
-            (positions[:, 2] >= z_min) & (positions[:, 2] <= z_max)
+            (positions[:, 0] >= x_min) &
+            (positions[:, 0] <= x_max) &
+            (positions[:, 1] >= y_min) &
+            (positions[:, 1] <= y_max) &
+            (positions[:, 2] >= z_min) &
+            (positions[:, 2] <= z_max)
         )
-        identificators = self.lammps_extractor.__get_atom_identificators__()[np.where(mask)[0]]
+        identificators = self.lammps_extractor.__get_atom_identificators__()[mask]
 
-        
         return (x_min, x_max, y_min, y_max, z_min, z_max), identificators
-    
+
     def _process_single_cell(self, atom_identificators, cell):
         """
         Processes each mega cell. There are four possible cases:
         1) The cell is overfilled with atoms (>32 atoms) -> add to dictionary with overfilled cells
         2) The cell is undefilled with atoms (<32 atoms) -> add to dictionary with vacant cells
-        3) The cell is already grained (4 atoms) 
+        3) The cell is already grained (4 atoms)
         4) The cell is in a position of a crack (skip this area) -> skip it
         """
         type_of_cell = SIMPLE
         number_of_atoms_in_cell = len(atom_identificators)
-        if number_of_atoms_in_cell == 32:
+        if number_of_atoms_in_cell > 30:
+
             if self._solver_rule(atom_identificators, to_approximate=True):
                 self.cells_to_approximate.append((cell, atom_identificators))
-        elif number_of_atoms_in_cell > 32:
-            new_atom_identificators = self._extract_extra_atoms(atom_identificators, is_crack=False)
-            if self._solver_rule(atom_identificators, to_approximate=True):
-                self.cells_to_approximate.append((cell, new_atom_identificators))
-        elif number_of_atoms_in_cell < 32:
-            type_of_cell = self._define_type_of_underfilled_cell(atom_identificators)
-            if type_of_cell == CRACK:
-                self._extract_extra_atoms(atom_identificators, is_crack=True)
-            elif type_of_cell == ROGUE_CELL:
-                if self._solver_rule(atom_identificators, to_granulate=True):
-                    self.cells_to_granulate.append((cell, atom_identificators)) # TODO: DELETE!!!
-                self.rogue_cells.append((cell, atom_identificators))
-            elif type_of_cell == GRAINED:
-                if self._solver_rule(atom_identificators, to_granulate=True):
-                    self.cells_to_granulate.append((cell, atom_identificators))
-            else:
-                if self._solver_rule(atom_identificators, to_approximate=True):
-                    self.cells_to_approximate.append((cell, atom_identificators))
-
+        elif number_of_atoms_in_cell > 10 and number_of_atoms_in_cell < 15:
+            type_of_cell = GRAINED
+            if self._solver_rule(atom_identificators, to_granulate=True):
+                self.cells_to_granulate.append((cell, atom_identificators))
+        # elif number_of_atoms_in_cell > 32:
+        #     new_atom_identificators = self._extract_extra_atoms(atom_identificators, is_crack=False)
+        #     if self._solver_rule(atom_identificators, to_approximate=True):
+        #         self.cells_to_approximate.append((cell, new_atom_identificators))
+        # elif number_of_atoms_in_cell < 32:
+        #     type_of_cell = self._define_type_of_underfilled_cell(atom_identificators)
+        #     if type_of_cell == CRACK:
+        #         self._extract_extra_atoms(atom_identificators, is_crack=True)
+        #     elif type_of_cell == ROGUE_CELL:
+        #         if self._solver_rule(atom_identificators, to_granulate=True):
+        #             self.cells_to_granulate.append((cell, atom_identificators)) # TODO: DELETE!!!
+        #         self.rogue_cells.append((cell, atom_identificators))
+        #     elif type_of_cell == GRAINED:
+        #         if self._solver_rule(atom_identificators, to_granulate=True):
+        #             self.cells_to_granulate.append((cell, atom_identificators))
+        #     else:
+        #         if self._solver_rule(atom_identificators, to_approximate=True):
+        #             self.cells_to_approximate.append((cell, atom_identificators))
 
         return type_of_cell
-    
+
     def get_lammps_instance(self):
         return self.lammps_extractor.get_instance()
-    
-    def _solver_rule(self, atom_identificators, to_approximate=False, to_granulate=False) -> bool:
+
+    def _solver_rule(
+        self, atom_identificators, to_approximate=False, to_granulate=False
+    ) -> bool:
         res = False
-        mean_pe = np.mean(self.lammps_extractor.__get_pe_per_atom__()[atom_identificators])
-        minima = np.min(self.lammps_extractor.__get_pe_per_atom__()[atom_identificators])
+        mean_pe = np.mean(
+            self.lammps_extractor.__get_pe_per_atom__()[atom_identificators]
+        )
+        minima = np.min(
+            self.lammps_extractor.__get_pe_per_atom__()[atom_identificators]
+        )
         print(f"Min PE: {minima}")
-        maxima = np.max(self.lammps_extractor.__get_pe_per_atom__()[atom_identificators])
+        maxima = np.max(
+            self.lammps_extractor.__get_pe_per_atom__()[atom_identificators]
+        )
         print(f"Max PE: {maxima}")
         # print(f"Mean PE: {np.mean(self.lammps_extractor.__get_pe_per_atom__()[atom_identificators])}")
-        if to_approximate: 
-            if (mean_pe < self.LOWER_THRESHOLD):
+        if to_approximate:
+            if mean_pe < self.LOWER_THRESHOLD:
                 res = True
-        if to_granulate: 
-            if (mean_pe > self.UPPER_THRESHOLD):
+        if to_granulate:
+            if mean_pe > self.UPPER_THRESHOLD:
                 res = True
         return res
-    
+
     def _define_type_of_underfilled_cell(self, atom_identificators) -> int:
         res = SIMPLE
         atom_types = self.lammps_extractor.__get_atom_types__()[atom_identificators]
@@ -287,21 +323,23 @@ class FccCellsExtractor(Extractor):
         elif number_of_huge_atoms == 4:
             res = GRAINED
         return res
-    
+
     def _lammps_execute(self):
         return self.get_communicator().get_instance()
-    
-    def _execute_lammps_replacement_approximation(self, cell_to_granulate : tuple):
+
+    def _execute_lammps_replacement_approximation(self, cell_to_granulate: tuple):
         """
         Replace atoms with new one.
         """
-        (x_min, x_max, y_min, y_max, z_min, z_max), atom_ids  = cell_to_granulate
+        (x_min, x_max, y_min, y_max, z_min, z_max), atom_ids = cell_to_granulate
         # velocities_region =  self.extractor.__get_velocities__() # TODO: extract velocities
-        self._lammps_execute().command(f"region kill block {x_min} {x_max} {y_min} {y_max} {z_min} {z_max} units box")
+        self._lammps_execute().command(
+            f"region kill block {x_min} {x_max} {y_min} {y_max} {z_min} {z_max} units box"
+        )
         self._lammps_execute().command("group cell_atoms region kill")
 
         lenj = len(self.get_communicator().__get_atom_identificators__())
-        print(f'Max len: {lenj}')
+        print(f"Max len: {lenj}")
         self._lammps_execute().command(f"lattice fcc {self.lattice_constant_cg-0.01}")
         velocities_of_the_cell = self.get_communicator().__get_velocities__()[atom_ids]
         mean_vx = np.mean(velocities_of_the_cell[:, 0]) * 8
@@ -312,8 +350,8 @@ class FccCellsExtractor(Extractor):
             f"variable vx_new equal {mean_vx}",
             f"variable vy_new equal {mean_vy}",
             f"variable vz_new equal {mean_vz}",
-            'delete_atoms region kill',
-            'create_atoms 2 region kill',
+            "delete_atoms region kill",
+            "create_atoms 2 region kill",
             # 'run 5'
             "velocity cell_atoms set ${vx_new} ${vy_new} ${vz_new}",
             "variable vx_new delete",
@@ -330,10 +368,12 @@ class FccCellsExtractor(Extractor):
         # if self.__DEBUG_MODE__:
         #     self.__debug_grained_cells.append((x_min, x_max, y_min, y_max, z_min, z_max))
 
-    def _execute_lammps_replacement_granulation(self, cell_to_granulate : tuple):
-        (x_min, x_max, y_min, y_max, z_min, z_max), atom_ids  = cell_to_granulate
+    def _execute_lammps_replacement_granulation(self, cell_to_granulate: tuple):
+        (x_min, x_max, y_min, y_max, z_min, z_max), atom_ids = cell_to_granulate
         # velocities_region =  self.extractor.__get_velocities__() # TODO: extract velocities
-        self._lammps_execute().command(f"region kill block {x_min} {x_max} {y_min} {y_max} {z_min} {z_max} units box")
+        self._lammps_execute().command(
+            f"region kill block {x_min} {x_max} {y_min} {y_max} {z_min} {z_max} units box"
+        )
         self._lammps_execute().command("group cell_atoms region kill")
 
         self._lammps_execute().command(f"lattice fcc {self.lattice_constant}")
@@ -346,8 +386,8 @@ class FccCellsExtractor(Extractor):
             f"variable vx_new equal {mean_vx}",
             f"variable vy_new equal {mean_vy}",
             f"variable vz_new equal {mean_vz}",
-            'delete_atoms region kill',
-            'create_atoms 1 region kill',
+            "delete_atoms region kill",
+            "create_atoms 1 region kill",
             # 'run 5'
             "velocity cell_atoms set ${vx_new} ${vy_new} ${vz_new}",
             "variable vx_new delete",
@@ -362,9 +402,8 @@ class FccCellsExtractor(Extractor):
         # return
         # if self.__DEBUG_MODE__:
         #     self.__debug_grained_cells.append((x_min, x_max, y_min, y_max, z_min, z_max))
-        
 
-    def _extract_extra_atoms(self, atom_identificators : np.ndarray, is_crack : bool):
+    def _extract_extra_atoms(self, atom_identificators: np.ndarray, is_crack: bool):
         if is_crack:
             self.extra_atoms.extend(atom_identificators)
         else:
@@ -373,15 +412,21 @@ class FccCellsExtractor(Extractor):
 
             # TODO: correct fcc extraction. NOW IT IS INCORRECT!!!
             return atom_identificators[:32]
-    
-    def _repair_underfilled_cells(self,):
-        
-        # TODO: setup satisfaction of law of masses!!! 
+
+    def _repair_underfilled_cells(
+        self,
+    ):
+
+        # TODO: setup satisfaction of law of masses!!!
         # Fill unfilled mega cells.
         return
-    
-    def _get_cells_to_approximate(self,) -> list:
+
+    def _get_cells_to_approximate(
+        self,
+    ) -> list:
         return self.cells_to_approximate
-    
-    def _get_cells_to_granulate(self,) -> list:
+
+    def _get_cells_to_granulate(
+        self,
+    ) -> list:
         return self.cells_to_granulate

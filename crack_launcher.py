@@ -52,10 +52,6 @@ block = f'kkkk'
 L = lammps()
 
 
-communicator = LammpsExtractor(L)
-solver = FccCellsExtractor(communicator, A)
-dc = DynamicChanger(solver, A, A_CG, baby_mode=True)
-
 if args.solver == 'layer':
     pass
     # solver = ExampleLayerExtractor()
@@ -66,13 +62,16 @@ if args.solver == 'fcc':
 # setup from user
 L.file(args.file)
 
+communicator = LammpsExtractor(L)
+solver = FccCellsExtractor(communicator, A)
+dc = DynamicChanger(solver, A, A_CG, baby_mode=True)
+
 
 block = f"""
 pair_coeff      1 2 20 2.28
 pair_coeff      2 2 {EPSILON_CG} {SIGMA_CG}
 mass            2 {ATOMIC_UNIT_MASS_CG}
 lattice         fcc {A_CG}
-# change_box      all z scale 1.2
 """
 
 L.commands_string(block)
@@ -80,16 +79,16 @@ L.commands_string(block)
 logging.info("The simulation started successfully.")
 iter = 0
 
-
-
 with MemoryProfiler(name="accelerate", track_objects=True, snapshot_interval=20) as profiler:
     while iter < iteration:
         profiler.snapshot(iteration=iter, label=f"step_{iter}")
 
         L.cmd.run(measure_frequency)
 
-       
-        dc.accelerate()
+       # mean among several snapshots!!! 3-4
+       # asssume there are 32 atoms everywhere 
+       # Number of snapshots as flag --time_window
+        dc.accelerate(L)
 
         L.command("reset_atoms id")
 

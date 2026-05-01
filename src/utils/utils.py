@@ -12,9 +12,10 @@ class LammpsCommunicator():
         return self.lammps_instance
 
     def __get_positions__(self,) -> np.ndarray:
+        # raw_pos = np.array(self.lammps_instance.gather_atoms("x", 1, 3)).reshape(126, 3)
         raw_pos = self.lammps_instance.numpy.extract_atom("x")[:self.nlocal]
         sort_indices = np.argsort(self.__get_atom_identificators__())
-        return raw_pos[sort_indices]
+        return raw_pos
     
     def __get_atom_types__(self,) -> np.ndarray:
         raw_types = self.lammps_instance.numpy.extract_atom("type")[:self.nlocal]
@@ -31,10 +32,13 @@ class LammpsCommunicator():
         return raw_ids - 1 # LAMMPS starts indexing from 1, not 0.
     
     def __get_box_size__(self,) -> tuple:
-        box = self.lammps_instance.extract_box() # TODO: MINIMAL POSITIONS INSTEAD OF BOX
-        xlo, xhi = box[0][0], box[1][0]          # TODO: WHY IS IT SHIT WITH SHRINK-WRAPPED?
-        ylo, yhi = box[0][1], box[1][1]
-        zlo, zhi = box[0][2], box[1][2]
+        # box = self.lammps_instance.extract_box() # TODO: MINIMAL POSITIONS INSTEAD OF BOX
+        # xlo, xhi = box[0][0], box[1][0]          # TODO: WHY IS IT SHIT WITH SHRINK-WRAPPED?
+        # ylo, yhi = box[0][1], box[1][1]
+        # zlo, zhi = box[0][2], box[1][2]
+        xlo, xhi = np.min(self.__get_positions__()[:,0]) -1e-3, np.max(self.__get_positions__()[:,0]) +1e-3*2
+        ylo, yhi = np.min(self.__get_positions__()[:,1])-1e-3, np.max(self.__get_positions__()[:,1])+1e-3*2
+        zlo, zhi = np.min(self.__get_positions__()[:,2])-1e-3, np.max(self.__get_positions__()[:,2])+1e-3*2
         return xlo, xhi, ylo, yhi, zlo, zhi
     
     def __get_pe_per_atom__(self,) -> tuple:
