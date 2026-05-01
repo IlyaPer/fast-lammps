@@ -19,9 +19,10 @@ from scipy.spatial import distance
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .base import Extractor
-from ..utils.utils import LammpsExtractor
+from src.extractors.base_extractor import Extractor
+from ..utils.utils import LammpsCommunicator
 
+SIMPLE = 0
 CRACK = 1
 ROGUE_CELL = 2
 GRAINED = 3
@@ -135,7 +136,7 @@ class ExampleLayerExtractor(Extractor):
         # write("region_mask_already_grained.xyz", atoms[region_mask_already_grained])
 
 class FccCellsExtractor(Extractor):
-    def __init__(self, lammps_extractor : LammpsExtractor, lattice_contant : float):
+    def __init__(self, lammps_extractor : LammpsCommunicator, lattice_contant : float, lattice_constant_cg = 7.04, lower_threshold=-3., upper_threshold=-0.7):
         super().__init__()
 
         from ase.build import bulk
@@ -149,19 +150,37 @@ class FccCellsExtractor(Extractor):
         self.model_mega_fcc_positions = ni.repeat((1,1,1)).get_positions()
         self.lattice_constant = lattice_contant
 
-        self.xlo, self.xhi, self.ylo, self.yhi, self.zlo, self.zhi = lammps_extractor.__get_box_size__()
-        self.cell_size = self.lattice_constant * 2.0
+        self.cell_size = self.lattice_constant * 2.0 + 1e-1 # Accept a) Fluctuations b) Intersections?
 
-        self.LOWER_THRESHOLD = -3.0
-        self.UPPER_THRESHOLD = -2.2
+        self.LOWER_THRESHOLD = lower_threshold
+        self.UPPER_THRESHOLD = upper_threshold
+
+        self.lattice_constant_cg = lattice_constant_cg
 
         self.cells_to_approximate = []
         self.rogue_cells = []
         self.extra_atoms = []
         self.cells_to_granulate = []
+        self.debug_cells_grained = []
+
+    def clear_extractor(self):
+        self.cells_to_approximate = []
+        self.rogue_cells = []
+        self.extra_atoms = []
+        self.cells_to_granulate = []
+        self.debug_cells_grained = []
+
+    def set_communicator(self, lammps_instance):
+        self.lammps_extractor = LammpsCommunicator(lammps_instance)
+
+    def get_communicator(self):
+        return self.lammps_extractor
 
     @override
     def extract_interesting_regions(self,):
+        self.xlo, self.xhi, self.ylo, self.yhi, self.zlo, self.zhi = self.lammps_extractor.__get_box_size__()
+
+        self.clear_extractor()
         cell_size = self.lattice_constant * 2.0
 
         nx = int(np.floor((self.xhi - self.xlo) / cell_size))
@@ -185,17 +204,17 @@ class FccCellsExtractor(Extractor):
 
         positions = self.lammps_extractor.__get_positions__() # Should be sorted by id or not?
 
-        x_min = self.xlo + ix * self.cell_size
+        x_min = self.xlo + (ix) * self.cell_size
         x_max = x_min + self.cell_size
-        y_min = self.ylo + iy * self.cell_size
+        y_min = self.ylo + (iy) * self.cell_size
         y_max = y_min + self.cell_size
-        z_min = self.zlo + iz * self.cell_size
+        z_min = self.zlo + (iz) * self.cell_size
         z_max = z_min + self.cell_size
 
         mask = (
-            (positions[:, 0] >= x_min) & (positions[:, 0] < x_max) &
-            (positions[:, 1] >= y_min) & (positions[:, 1] < y_max) &
-            (positions[:, 2] >= z_min) & (positions[:, 2] < z_max)
+            (positions[:, 0] >= x_min) & (positions[:, 0] <= x_max) &
+            (positions[:, 1] >= y_min) & (positions[:, 1] <= y_max) &
+            (positions[:, 2] >= z_min) & (positions[:, 2] <= z_max)
         )
         identificators = self.lammps_extractor.__get_atom_identificators__()[np.where(mask)[0]]
 
@@ -210,6 +229,7 @@ class FccCellsExtractor(Extractor):
         3) The cell is already grained (4 atoms) 
         4) The cell is in a position of a crack (skip this area) -> skip it
         """
+        type_of_cell = SIMPLE
         number_of_atoms_in_cell = len(atom_identificators)
         if number_of_atoms_in_cell == 32:
             if self._solver_rule(atom_identificators, to_approximate=True):
@@ -223,36 +243,127 @@ class FccCellsExtractor(Extractor):
             if type_of_cell == CRACK:
                 self._extract_extra_atoms(atom_identificators, is_crack=True)
             elif type_of_cell == ROGUE_CELL:
+                if self._solver_rule(atom_identificators, to_granulate=True):
+                    self.cells_to_granulate.append((cell, atom_identificators)) # TODO: DELETE!!!
                 self.rogue_cells.append((cell, atom_identificators))
             elif type_of_cell == GRAINED:
                 if self._solver_rule(atom_identificators, to_granulate=True):
                     self.cells_to_granulate.append((cell, atom_identificators))
+            else:
+                if self._solver_rule(atom_identificators, to_approximate=True):
+                    self.cells_to_approximate.append((cell, atom_identificators))
 
-        return
+
+        return type_of_cell
+    
+    def get_lammps_instance(self):
+        return self.lammps_extractor.get_instance()
     
     def _solver_rule(self, atom_identificators, to_approximate=False, to_granulate=False) -> bool:
         res = False
+        mean_pe = np.mean(self.lammps_extractor.__get_pe_per_atom__()[atom_identificators])
+        minima = np.min(self.lammps_extractor.__get_pe_per_atom__()[atom_identificators])
+        print(f"Min PE: {minima}")
+        maxima = np.max(self.lammps_extractor.__get_pe_per_atom__()[atom_identificators])
+        print(f"Max PE: {maxima}")
+        # print(f"Mean PE: {np.mean(self.lammps_extractor.__get_pe_per_atom__()[atom_identificators])}")
         if to_approximate: 
-            if (np.mean(self.lammps_extractor.__get_pe_per_atom__()[atom_identificators]) < self.LOWER_THRESHOLD):
+            if (mean_pe < self.LOWER_THRESHOLD):
                 res = True
         if to_granulate: 
-            if (np.mean(self.lammps_extractor.__get_pe_per_atom__()[atom_identificators]) > self.UPPER_THRESHOLD):
+            if (mean_pe > self.UPPER_THRESHOLD):
                 res = True
         return res
     
     def _define_type_of_underfilled_cell(self, atom_identificators) -> int:
-        res = CRACK
-        number_of_small_atoms = len(self.lammps_extractor.__get_atom_types__()[atom_identificators] == 1)
-        number_of_huge_atoms = len(self.lammps_extractor.__get_atom_types__()[atom_identificators] == 2)
+        res = SIMPLE
+        atom_types = self.lammps_extractor.__get_atom_types__()[atom_identificators]
+        number_of_small_atoms = len(atom_types[atom_types == 1])
+        number_of_huge_atoms = len(atom_types[atom_types == 2])
 
         # TODO: correct defining of a crack!!! NOW IT IS INCORRECT!!!
         if number_of_small_atoms > 20:
             res = ROGUE_CELL
-
-        if number_of_huge_atoms == 4:
+        elif number_of_huge_atoms == 4:
             res = GRAINED
         return res
     
+    def _lammps_execute(self):
+        return self.get_communicator().get_instance()
+    
+    def _execute_lammps_replacement_approximation(self, cell_to_granulate : tuple):
+        """
+        Replace atoms with new one.
+        """
+        (x_min, x_max, y_min, y_max, z_min, z_max), atom_ids  = cell_to_granulate
+        # velocities_region =  self.extractor.__get_velocities__() # TODO: extract velocities
+        self._lammps_execute().command(f"region kill block {x_min} {x_max} {y_min} {y_max} {z_min} {z_max} units box")
+        self._lammps_execute().command("group cell_atoms region kill")
+
+        lenj = len(self.get_communicator().__get_atom_identificators__())
+        print(f'Max len: {lenj}')
+        self._lammps_execute().command(f"lattice fcc {self.lattice_constant_cg-0.01}")
+        velocities_of_the_cell = self.get_communicator().__get_velocities__()[atom_ids]
+        mean_vx = np.mean(velocities_of_the_cell[:, 0]) * 8
+        mean_vy = np.mean(velocities_of_the_cell[:, 1]) * 8
+        mean_vz = np.mean(velocities_of_the_cell[:, 2]) * 8
+
+        commands = [
+            f"variable vx_new equal {mean_vx}",
+            f"variable vy_new equal {mean_vy}",
+            f"variable vz_new equal {mean_vz}",
+            'delete_atoms region kill',
+            'create_atoms 2 region kill',
+            # 'run 5'
+            "velocity cell_atoms set ${vx_new} ${vy_new} ${vz_new}",
+            "variable vx_new delete",
+            "variable vy_new delete",
+            "variable vz_new delete",
+        ]
+        for cmd in commands:
+            self._lammps_execute().command(cmd)
+        self._lammps_execute().command("group cell_atoms delete")
+        self._lammps_execute().command("region kill delete")
+        self._lammps_execute().command("reset_atoms id")
+        # self._lammps_execute().command("delete_atoms overlap 0.01 all all")
+        # return
+        # if self.__DEBUG_MODE__:
+        #     self.__debug_grained_cells.append((x_min, x_max, y_min, y_max, z_min, z_max))
+
+    def _execute_lammps_replacement_granulation(self, cell_to_granulate : tuple):
+        (x_min, x_max, y_min, y_max, z_min, z_max), atom_ids  = cell_to_granulate
+        # velocities_region =  self.extractor.__get_velocities__() # TODO: extract velocities
+        self._lammps_execute().command(f"region kill block {x_min} {x_max} {y_min} {y_max} {z_min} {z_max} units box")
+        self._lammps_execute().command("group cell_atoms region kill")
+
+        self._lammps_execute().command(f"lattice fcc {self.lattice_constant}")
+        velocities_of_the_cell = self.get_communicator().__get_velocities__()[atom_ids]
+        mean_vx = np.mean(velocities_of_the_cell[:, 0]) / 8
+        mean_vy = np.mean(velocities_of_the_cell[:, 1]) / 8
+        mean_vz = np.mean(velocities_of_the_cell[:, 2]) / 8
+
+        commands = [
+            f"variable vx_new equal {mean_vx}",
+            f"variable vy_new equal {mean_vy}",
+            f"variable vz_new equal {mean_vz}",
+            'delete_atoms region kill',
+            'create_atoms 1 region kill',
+            # 'run 5'
+            "velocity cell_atoms set ${vx_new} ${vy_new} ${vz_new}",
+            "variable vx_new delete",
+            "variable vy_new delete",
+            "variable vz_new delete",
+        ]
+        for cmd in commands:
+            self._lammps_execute().command(cmd)
+        self._lammps_execute().command("group cell_atoms delete")
+        self._lammps_execute().command("region kill delete")
+        # self._lammps_execute().command("delete_atoms overlap 0.01 all all")
+        # return
+        # if self.__DEBUG_MODE__:
+        #     self.__debug_grained_cells.append((x_min, x_max, y_min, y_max, z_min, z_max))
+        
+
     def _extract_extra_atoms(self, atom_identificators : np.ndarray, is_crack : bool):
         if is_crack:
             self.extra_atoms.extend(atom_identificators)
