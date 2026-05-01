@@ -199,13 +199,18 @@ class FccCellsExtractor(Extractor):
         self.xlo, self.xhi, self.ylo, self.yhi, self.zlo, self.zhi = (
             self.lammps_extractor.__get_box_size__()
         )
+        
+        # Align the grid to the lattice to prevent thermal fluctuations from shifting the cells
+        self.xlo = np.round(self.xlo / self.lattice_constant) * self.lattice_constant
+        self.ylo = np.round(self.ylo / self.lattice_constant) * self.lattice_constant
+        self.zlo = np.round(self.zlo / self.lattice_constant) * self.lattice_constant
 
         self.clear_extractor()
         cell_size = self.lattice_constant * 2.0
 
-        nx = int(np.floor((self.xhi - self.xlo) / cell_size))
-        ny = int(np.floor((self.yhi - self.ylo) / cell_size))
-        nz = int(np.floor((self.zhi - self.zlo) / cell_size))
+        nx = int(np.ceil((self.xhi - self.xlo) / cell_size))
+        ny = int(np.ceil((self.yhi - self.ylo) / cell_size))
+        nz = int(np.ceil((self.zhi - self.zlo) / cell_size))
 
         # Split space to cubes with edge cell_size * SCALE_FACTOR
         for ix in range(nx):
@@ -225,12 +230,19 @@ class FccCellsExtractor(Extractor):
             self.lammps_extractor.__get_positions__()
         )  # Should be sorted by id or not?
 
-        x_min = self.xlo + (ix) * self.cell_size - 0.1
-        x_max = x_min + self.cell_size + 0.2
-        y_min = self.ylo + (iy) * self.cell_size - 0.1
-        y_max = y_min + self.cell_size + 0.2
-        z_min = self.zlo + (iz) * self.cell_size - 0.1
-        z_max = z_min + self.cell_size+ 0.2
+        x_exact_min = self.xlo + ix * self.cell_size
+        x_exact_max = x_exact_min + self.cell_size
+        y_exact_min = self.ylo + iy * self.cell_size
+        y_exact_max = y_exact_min + self.cell_size
+        z_exact_min = self.zlo + iz * self.cell_size
+        z_exact_max = z_exact_min + self.cell_size
+
+        x_min = x_exact_min - 0.1
+        x_max = x_exact_max + 0.2
+        y_min = y_exact_min - 0.1
+        y_max = y_exact_max + 0.2
+        z_min = z_exact_min - 0.1
+        z_max = z_exact_max + 0.2
 
         # collects atoms in the cell
         mask = (
@@ -243,7 +255,7 @@ class FccCellsExtractor(Extractor):
         )
         identificators = self.lammps_extractor.__get_atom_identificators__()[mask]
 
-        return (x_min, x_max, y_min, y_max, z_min, z_max), identificators
+        return (x_exact_min, x_exact_max, y_exact_min, y_exact_max, z_exact_min, z_exact_max), identificators
 
     def _process_single_cell(self, atom_identificators, cell):
         """
@@ -332,27 +344,35 @@ class FccCellsExtractor(Extractor):
         Replace atoms with new one.
         """
         (x_min, x_max, y_min, y_max, z_min, z_max), atom_ids = cell_to_granulate
-        # velocities_region =  self.extractor.__get_velocities__() # TODO: extract velocities
+        
+        if len(atom_ids) > 0:
+            string_of_ids = " ".join(map(str, atom_ids + 1))
+            self._lammps_execute().command(f"group delete_group id {string_of_ids}")
+            self._lammps_execute().command("delete_atoms group delete_group")
+            self._lammps_execute().command("group delete_group delete")
+
         self._lammps_execute().command(
-            f"region kill block {x_min} {x_max} {y_min} {y_max} {z_min} {z_max} units box"
+            f"region spawn_region block {x_min} {x_max} {y_min} {y_max} {z_min} {z_max} units box"
         )
-        self._lammps_execute().command("group cell_atoms region kill")
 
         lenj = len(self.get_communicator().__get_atom_identificators__())
         print(f"Max len: {lenj}")
         self._lammps_execute().command(f"lattice fcc {self.lattice_constant_cg-0.01}")
-        velocities_of_the_cell = self.get_communicator().__get_velocities__()[atom_ids]
-        mean_vx = np.mean(velocities_of_the_cell[:, 0]) * 8
-        mean_vy = np.mean(velocities_of_the_cell[:, 1]) * 8
-        mean_vz = np.mean(velocities_of_the_cell[:, 2]) * 8
+        
+        if len(atom_ids) > 0:
+            velocities_of_the_cell = self.get_communicator().__get_velocities__()[atom_ids]
+            mean_vx = np.mean(velocities_of_the_cell[:, 0]) * 8
+            mean_vy = np.mean(velocities_of_the_cell[:, 1]) * 8
+            mean_vz = np.mean(velocities_of_the_cell[:, 2]) * 8
+        else:
+            mean_vx = mean_vy = mean_vz = 0.0
 
         commands = [
             f"variable vx_new equal {mean_vx}",
             f"variable vy_new equal {mean_vy}",
             f"variable vz_new equal {mean_vz}",
-            "delete_atoms region kill",
-            "create_atoms 2 region kill",
-            # 'run 5'
+            "create_atoms 2 region spawn_region",
+            "group cell_atoms region spawn_region",
             "velocity cell_atoms set ${vx_new} ${vy_new} ${vz_new}",
             "variable vx_new delete",
             "variable vy_new delete",
@@ -361,7 +381,7 @@ class FccCellsExtractor(Extractor):
         for cmd in commands:
             self._lammps_execute().command(cmd)
         self._lammps_execute().command("group cell_atoms delete")
-        self._lammps_execute().command("region kill delete")
+        self._lammps_execute().command("region spawn_region delete")
         self._lammps_execute().command("reset_atoms id")
         # self._lammps_execute().command("delete_atoms overlap 0.01 all all")
         # return
@@ -370,25 +390,33 @@ class FccCellsExtractor(Extractor):
 
     def _execute_lammps_replacement_granulation(self, cell_to_granulate: tuple):
         (x_min, x_max, y_min, y_max, z_min, z_max), atom_ids = cell_to_granulate
-        # velocities_region =  self.extractor.__get_velocities__() # TODO: extract velocities
+        
+        if len(atom_ids) > 0:
+            string_of_ids = " ".join(map(str, atom_ids + 1))
+            self._lammps_execute().command(f"group delete_group id {string_of_ids}")
+            self._lammps_execute().command("delete_atoms group delete_group")
+            self._lammps_execute().command("group delete_group delete")
+
         self._lammps_execute().command(
-            f"region kill block {x_min} {x_max} {y_min} {y_max} {z_min} {z_max} units box"
+            f"region spawn_region block {x_min} {x_max} {y_min} {y_max} {z_min} {z_max} units box"
         )
-        self._lammps_execute().command("group cell_atoms region kill")
 
         self._lammps_execute().command(f"lattice fcc {self.lattice_constant}")
-        velocities_of_the_cell = self.get_communicator().__get_velocities__()[atom_ids]
-        mean_vx = np.mean(velocities_of_the_cell[:, 0]) / 8
-        mean_vy = np.mean(velocities_of_the_cell[:, 1]) / 8
-        mean_vz = np.mean(velocities_of_the_cell[:, 2]) / 8
+        
+        if len(atom_ids) > 0:
+            velocities_of_the_cell = self.get_communicator().__get_velocities__()[atom_ids]
+            mean_vx = np.mean(velocities_of_the_cell[:, 0]) / 8
+            mean_vy = np.mean(velocities_of_the_cell[:, 1]) / 8
+            mean_vz = np.mean(velocities_of_the_cell[:, 2]) / 8
+        else:
+            mean_vx = mean_vy = mean_vz = 0.0
 
         commands = [
             f"variable vx_new equal {mean_vx}",
             f"variable vy_new equal {mean_vy}",
             f"variable vz_new equal {mean_vz}",
-            "delete_atoms region kill",
-            "create_atoms 1 region kill",
-            # 'run 5'
+            "create_atoms 1 region spawn_region",
+            "group cell_atoms region spawn_region",
             "velocity cell_atoms set ${vx_new} ${vy_new} ${vz_new}",
             "variable vx_new delete",
             "variable vy_new delete",
@@ -397,7 +425,7 @@ class FccCellsExtractor(Extractor):
         for cmd in commands:
             self._lammps_execute().command(cmd)
         self._lammps_execute().command("group cell_atoms delete")
-        self._lammps_execute().command("region kill delete")
+        self._lammps_execute().command("region spawn_region delete")
         # self._lammps_execute().command("delete_atoms overlap 0.01 all all")
         # return
         # if self.__DEBUG_MODE__:
